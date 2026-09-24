@@ -67,8 +67,12 @@ PO_WINDOW_DAYS = 14
 
 # Known corrections for items whose live description doesn't exactly match
 # the master (e.g. "SC ENV" vs "DC ENV" naming variants). Extend as needed.
+# Keys can be a Nav Item Code or an item name exactly as in the Requirement
+# file (case/spacing ignored). Items listed in the app's "not in the Item
+# Category Master" warning are the ones that need an entry here.
 CATEGORY_OVERRIDES: dict = {
-    # 'ITM09821': '25TB DC ENV (AFRICA)',  # example — add real codes/categories here
+    # 'ITM09821': '25TB DC ENV (AFRICA)',
+    # 'GARDEN STRAWBERRY 25 SC ENV TBGS': '25TB DC ENV (AFRICA)',
 }
 
 
@@ -299,6 +303,9 @@ def compute_moq(item_code, category, qty, item_names, laminated_codes):
     return round(qty * 1.02)
 
 
+_OVERRIDES_BY_NAME = {normalize_name(k): v for k, v in CATEGORY_OVERRIDES.items()}
+
+
 def build_item_category_map(req_data, master_name_to_cat, master_name_to_type):
     """Map each Nav Item Code to (fine category, item type)."""
     item_names = req_data["item_names"]
@@ -307,8 +314,9 @@ def build_item_category_map(req_data, master_name_to_cat, master_name_to_type):
     for code, name in item_names.items():
         norm = normalize_name(name)
         fine_cat = master_name_to_cat.get(norm)
-        if code in CATEGORY_OVERRIDES:
-            fine_cat = CATEGORY_OVERRIDES[code]
+        override = CATEGORY_OVERRIDES.get(code) or _OVERRIDES_BY_NAME.get(norm)
+        if override:
+            fine_cat = override
         if fine_cat:
             item_to_cat[code] = fine_cat
             item_to_type[code] = master_name_to_type.get(norm, (categories.get(code) or "").strip().upper())
@@ -330,6 +338,24 @@ def build_item_week_projections(req_data):
             for w in projection_weeks
         }
     return item_week_proj
+
+
+def build_unmatched_items_df(req_data, item_week_proj, item_to_cat) -> pd.DataFrame:
+    """CFC/CTN/TRAY items that have a projection but no Item Category (not in
+    the master and no override), so they are missing from PO Projection."""
+    weeks = req_data["projection_weeks"]
+    rows = []
+    for code, projs in item_week_proj.items():
+        coarse = (req_data["categories"].get(code) or "").strip().upper()
+        total = sum(v or 0 for v in projs.values())
+        if code in item_to_cat or coarse not in ITEM_TYPES or total <= 0:
+            continue
+        row = {"Nav Item Code": code, "Item Name": req_data["item_names"].get(code), "Item Type": coarse}
+        row.update({f"Wk #{w}": projs.get(w) or 0 for w in weeks})
+        row["Total"] = total
+        rows.append(row)
+    cols = ["Nav Item Code", "Item Name", "Item Type"] + [f"Wk #{w}" for w in weeks] + ["Total"]
+    return pd.DataFrame(rows, columns=cols).sort_values("Total", ascending=False).reset_index(drop=True)
 
 
 def build_po_issued_df(po_df: pd.DataFrame, today: date, window_days: int) -> pd.DataFrame:

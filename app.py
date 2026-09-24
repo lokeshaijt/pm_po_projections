@@ -105,6 +105,7 @@ if generate:
                 item_week_proj, item_to_cat, item_to_type, category_order, req_data["projection_weeks"]
             )
 
+            st.session_state["unmatched_df"] = L.build_unmatched_items_df(req_data, item_week_proj, item_to_cat)
             st.session_state["po_issued"] = po_issued
             st.session_state["category_df"] = category_df
             st.session_state["projection_weeks"] = req_data["projection_weeks"]
@@ -123,6 +124,16 @@ if "category_df" in st.session_state:
     category_df = st.session_state["category_df"]
     projection_weeks = st.session_state["projection_weeks"]
     po_issued = st.session_state["po_issued"]
+
+    unmatched_df = st.session_state.get("unmatched_df")
+    if unmatched_df is not None and not unmatched_df.empty:
+        st.warning(
+            f"{len(unmatched_df)} item(s) with a projection are not in the Item Category Master, "
+            f"so {unmatched_df['Total'].sum():,.0f} units are left out of PO Projection. "
+            "Add them to the master, or map them in `CATEGORY_OVERRIDES` in logic.py."
+        )
+        with st.expander("Show items left out"):
+            st.dataframe(unmatched_df, hide_index=True, use_container_width=True)
 
     st.divider()
     st.header("2. Download report")
