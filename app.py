@@ -166,15 +166,28 @@ if "category_df" in st.session_state:
         "`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, "
         "and a mapping of supplier name -> email address under `supplier_emails`."
     )
-    allocated_suppliers = list(dict.fromkeys(alloc_df["Supplier"]))
-    if not allocated_suppliers:
-        st.info("No supplier has an assigned projection yet.")
+    # Pending POs (PO Issued window) grouped under their roster supplier name.
+    po_mail = po_issued.copy()
+    po_mail["Roster Supplier"] = po_mail["Customer Name"].map(L.match_roster_supplier)
+    unmatched = sorted({str(n) for n in po_mail.loc[po_mail["Roster Supplier"].isna(), "Customer Name"].dropna()})
+    if unmatched:
+        with st.expander(f"{len(unmatched)} PO supplier name(s) not on the supplier list — their POs are not emailed"):
+            st.write(", ".join(unmatched))
+
+    roster = list(dict.fromkeys(s for sups in L.SUPPLIERS_BY_TYPE.values() for s in sups))
+    mail_suppliers = [
+        s for s in roster
+        if s in set(alloc_df["Supplier"]) or s in set(po_mail["Roster Supplier"].dropna())
+    ]
+    if not mail_suppliers:
+        st.info("No supplier has an assigned projection or a pending PO yet.")
     else:
         def email_parts(supplier):
             s_df = alloc_df[alloc_df["Supplier"] == supplier]
+            po_df = po_mail[po_mail["Roster Supplier"] == supplier]
             return (
-                L.build_supplier_allocation_text(supplier, s_df, projection_weeks),
-                L.build_supplier_email_html(supplier, s_df, projection_weeks),
+                L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df),
+                L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df),
             )
 
         def send_to(supplier):
@@ -186,13 +199,13 @@ if "category_df" in st.session_state:
                 st.secrets["smtp_username"],
                 st.secrets["smtp_password"],
                 to_email,
-                f"Item Category-wise Projection — {supplier}",
+                f"PO Issued & Item Category-wise Projection — {supplier}",
                 text_body,
                 html_body,
             )
             return to_email
 
-        email_supplier = st.selectbox("Send projection to", allocated_suppliers, key="email_supplier")
+        email_supplier = st.selectbox("Send email to", mail_suppliers, key="email_supplier")
         st.write("**Email preview**")
         with st.container(border=True):
             st.markdown(email_parts(email_supplier)[1], unsafe_allow_html=True)
@@ -201,8 +214,8 @@ if "category_df" in st.session_state:
         targets = []
         if col_one.button("Send email", type="primary"):
             targets = [email_supplier]
-        if col_all.button(f"Send to all assigned suppliers ({len(allocated_suppliers)})"):
-            targets = allocated_suppliers
+        if col_all.button(f"Send to all listed suppliers ({len(mail_suppliers)})"):
+            targets = mail_suppliers
         for supplier in targets:
             try:
                 to_email = send_to(supplier)

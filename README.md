@@ -13,9 +13,15 @@
    (1000 with 4 suppliers = 250 each; rounded to whole units).
 4. A **supplier-wise preview** table: supplier name merged down its rows,
    then Item category, Item type, and one column per week.
-5. **Email a supplier** (or all assigned suppliers) their allocation, using
-   the fixed template (see `logic.EMAIL_TEMPLATE_INTRO`) with the same table
-   as an HTML email (plain-text fallback included).
+5. **Email a supplier** (or all listed suppliers). Each email has two
+   tables: **PO Issued** (that supplier's pending POs in the delivery window,
+   overdue included, negative days in red) and **PO Projection** (their
+   allocation, using the fixed template in `logic.EMAIL_TEMPLATE_INTRO`).
+   A section is left out when the supplier has nothing for it. Sent as HTML
+   with a plain-text fallback. PO supplier names ("Customer Name" in the
+   Pending PO file) are matched to the roster ignoring case, punctuation and
+   Pvt/Ltd-style suffixes (`logic.match_roster_supplier`); names that don't
+   match are listed in the app and their POs are not emailed.
 
 ## Files
 - `app.py` — Streamlit UI only.

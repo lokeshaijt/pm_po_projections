@@ -574,25 +574,114 @@ def build_allocation_html(alloc_df: pd.DataFrame, projection_weeks) -> str:
     return "".join(out)
 
 
-def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks) -> str:
-    intro = html.escape(EMAIL_TEMPLATE_INTRO).replace("\n", "<br>")
-    return (
-        '<div style="font-family:Calibri,Arial,sans-serif;font-size:14px;">'
-        f"<p>Hello {html.escape(supplier_name)},</p>"
-        f"<p>{intro}</p>"
-        f"{build_allocation_html(supplier_alloc_df, projection_weeks)}"
-        "<p>Thank you.</p></div>"
-    )
+_COMPANY_SUFFIXES = r"\b(PRIVATE|PVT|LIMITED|LTD|P|CO|COMPANY|INDIA)\b"
 
 
-def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks) -> str:
+def _supplier_key(name) -> str:
+    """Loose key for matching supplier names across files: case, punctuation
+    and company suffixes (Pvt Ltd, (P) Ltd, Private Limited...) ignored."""
+    s = re.sub(r"[^A-Z0-9 ]", " ", normalize_name(name))
+    s = re.sub(_COMPANY_SUFFIXES, " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def match_roster_supplier(name):
+    """Map a supplier name from the Pending PO file to its name in
+    SUPPLIERS_BY_TYPE (exact loose match first, then prefix match either way).
+    Returns None when the supplier isn't on the roster."""
+    key = _supplier_key(name)
+    if not key:
+        return None
+    roster = list(dict.fromkeys(s for sups in SUPPLIERS_BY_TYPE.values() for s in sups))
+    keys = {s: _supplier_key(s) for s in roster}
+    for s, k in keys.items():
+        if k == key:
+            return s
+    for s, k in keys.items():
+        shorter = min(k, key, key=len)
+        # Prefix match only on whole words, and only for 2+ word names, so a
+        # bare "SRI" can't grab "SRI RANGA INDUSTRIES".
+        if len(shorter.split()) >= 2 and (key.startswith(k + " ") or k.startswith(key + " ")):
+            return s
+    return None
+
+
+PO_EMAIL_INTRO = "Please find below the pending POs due for delivery (including overdue)."
+
+
+def _fmt_date(v) -> str:
+    return v.strftime("%d/%m/%Y") if pd.notna(v) else ""
+
+
+def _fmt_qty(v) -> str:
+    return f"{float(v):,.0f}" if pd.notna(v) else ""
+
+
+def build_po_issued_html(po_rows: pd.DataFrame) -> str:
+    """Supplier's pending POs as a bordered table; negative "No. of days to
+    arrive" in bold red on a red fill, matching the PO Issued sheet."""
+    cell = "border:1px solid #000;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:14px;"
+    head = ["PO number", "PO date", "Item Description", "PO Qty", "Outstanding Qty",
+            "Delivery date", "No. of days to arrive"]
+    out = ['<table style="border-collapse:collapse;">', "<tr>"]
+    out += [f'<th style="{cell}text-align:left;font-weight:normal;">{h}</th>' for h in head]
+    out.append("</tr>")
+    for _, row in po_rows.iterrows():
+        days = row["No. of days to arrive"]
+        late = pd.notna(days) and days < 0
+        days_style = "color:#FF0000;font-weight:bold;background:#FCE5E5;" if late else ""
+        out.append("<tr>")
+        out.append(f'<td style="{cell}">{html.escape(str(row["Document No"] or ""))}</td>')
+        out.append(f'<td style="{cell}text-align:center;">{_fmt_date(row["Order Date"])}</td>')
+        out.append(f'<td style="{cell}">{html.escape(str(row["Item Description"] or ""))}</td>')
+        out.append(f'<td style="{cell}text-align:right;">{_fmt_qty(row["Quantity"])}</td>')
+        out.append(f'<td style="{cell}text-align:right;">{_fmt_qty(row["Outstanding Quantity"])}</td>')
+        out.append(f'<td style="{cell}text-align:center;">{_fmt_date(row["Delivery Date"])}</td>')
+        out.append(f'<td style="{cell}text-align:center;{days_style}">{"" if pd.isna(days) else int(days)}</td>')
+        out.append("</tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
+                              supplier_po_df: pd.DataFrame = None) -> str:
+    parts = [
+        '<div style="font-family:Calibri,Arial,sans-serif;font-size:14px;">',
+        f"<p>Hello {html.escape(supplier_name)},</p>",
+    ]
+    if supplier_po_df is not None and not supplier_po_df.empty:
+        parts += [f"<p><b>PO Issued</b><br>{html.escape(PO_EMAIL_INTRO)}</p>",
+                  build_po_issued_html(supplier_po_df)]
+    if not supplier_alloc_df.empty:
+        intro = html.escape(EMAIL_TEMPLATE_INTRO).replace("\n", "<br>")
+        parts += [f"<p><b>PO Projection</b><br>{intro}</p>",
+                  build_allocation_html(supplier_alloc_df, projection_weeks)]
+    parts.append("<p>Thank you.</p></div>")
+    return "".join(parts)
+
+
+def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
+                                   supplier_po_df: pd.DataFrame = None) -> str:
     """Plain-text fallback of the HTML email, for clients that don't render HTML."""
-    lines = [f"Hello {supplier_name},", "", EMAIL_TEMPLATE_INTRO, ""]
-    for _, row in supplier_alloc_df.iterrows():
-        lines.append(f"- {row['Item Category']} ({row['Item Type']})")
-        for w in projection_weeks:
-            v = row[f"Wk #{w}"]
-            if v:
-                lines.append(f"    {week_label(w)}: {v:.0f}")
-    lines += ["", "Thank you."]
+    lines = [f"Hello {supplier_name},", ""]
+    if supplier_po_df is not None and not supplier_po_df.empty:
+        lines += ["PO Issued", PO_EMAIL_INTRO, ""]
+        for _, row in supplier_po_df.iterrows():
+            days = row["No. of days to arrive"]
+            lines.append(
+                f"- PO {row['Document No']} ({_fmt_date(row['Order Date'])}): {row['Item Description']} | "
+                f"PO Qty {_fmt_qty(row['Quantity'])} | Outstanding {_fmt_qty(row['Outstanding Quantity'])} | "
+                f"Delivery {_fmt_date(row['Delivery Date'])} | Days to arrive {'' if pd.isna(days) else int(days)}"
+            )
+        lines.append("")
+    if not supplier_alloc_df.empty:
+        lines += ["PO Projection", EMAIL_TEMPLATE_INTRO, ""]
+        for _, row in supplier_alloc_df.iterrows():
+            lines.append(f"- {row['Item Category']} ({row['Item Type']})")
+            for w in projection_weeks:
+                v = row[f"Wk #{w}"]
+                if v:
+                    lines.append(f"    {week_label(w)}: {v:.0f}")
+        lines.append("")
+    lines.append("Thank you.")
     return "\n".join(lines)
