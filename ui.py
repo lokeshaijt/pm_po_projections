@@ -61,7 +61,7 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
 
 /* Getting-started steps. */
 .jay-steps {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .8rem; margin-top: .6rem; }}
-.jay-steps div {{ background: #fff; border: 1px solid #E4DCC8; border-top: 4px solid {GOLD}; border-radius: 12px; padding: .9rem 1rem; }}
+.jay-steps div {{ background: #fff; border: 1px solid #000; border-top: 4px solid {GOLD}; border-radius: 12px; padding: .9rem 1rem; }}
 .jay-steps b {{ display: block; color: {BLACK}; margin-bottom: .25rem; }}
 .jay-steps span {{ color: #6B6457; font-size: .9rem; }}
 

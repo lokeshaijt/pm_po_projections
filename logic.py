@@ -748,8 +748,9 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
         parts += [f"<p><b>Pending delivery</b><br>{html.escape(PO_EMAIL_INTRO)}</p>",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
-        intro = html.escape(EMAIL_TEMPLATE_INTRO).replace("\n", "<br>")
-        parts += [f"<p><b>PO Projection</b><br>{intro}</p>",
+        intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
+        parts += [f"<p><b>PO Projection</b><br>{html.escape(intro)}</p>",
+                  f'<p style="color:#FF0000;font-weight:bold;">{html.escape(note)}</p>',
                   build_allocation_html(supplier_alloc_df, projection_weeks)]
     parts.append("<p>Thank you.</p></div>")
     return "".join(parts)
