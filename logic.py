@@ -5,6 +5,7 @@ Deliberately has no dependency on streamlit, so it can be unit-tested
 and reused (e.g. from a CLI or notebook) independently of the UI.
 """
 
+import html
 import io
 import re
 from collections import defaultdict
@@ -493,14 +494,105 @@ EMAIL_TEMPLATE_INTRO = (
 )
 
 
-def build_supplier_email_body(supplier_name: str, supplier_cat_df: pd.DataFrame, projection_weeks) -> str:
+# ---------------------------------------------------------------------------
+# Supplier allocation (per category/week cell)
+# ---------------------------------------------------------------------------
+
+def allocate_to_suppliers(category_df: pd.DataFrame, selections: dict, projection_weeks) -> pd.DataFrame:
+    """Split each category/week projection evenly across the suppliers picked
+    for that cell. `selections` maps (item_category, week) -> [supplier, ...].
+
+    Returns one row per (Supplier, Item Category) with the allocated quantity
+    in each "Wk #N" column, ordered by supplier, then Item Type, then category.
+    """
+    week_cols = [f"Wk #{w}" for w in projection_weeks]
+    by_cat = category_df.set_index("Item Category")
+    alloc = defaultdict(lambda: {c: 0.0 for c in week_cols})
+    cat_types = {}
+    for (cat, w), suppliers in selections.items():
+        suppliers = [s for s in dict.fromkeys(suppliers or []) if s]
+        if not suppliers or cat not in by_cat.index:
+            continue
+        qty = by_cat.at[cat, f"Wk #{w}"]
+        if not qty or qty <= 0:
+            continue
+        share = qty / len(suppliers)
+        for s in suppliers:
+            alloc[(s, cat)][f"Wk #{w}"] += share
+            cat_types[cat] = by_cat.at[cat, "Item Type"]
+
+    columns = ["Supplier", "Item Category", "Item Type"] + week_cols
+    if not alloc:
+        return pd.DataFrame(columns=columns)
+
+    supplier_order = list(dict.fromkeys(s for sups in SUPPLIERS_BY_TYPE.values() for s in sups))
+    type_order = {t: i for i, t in enumerate(ITEM_TYPES)}
+
+    def sort_key(key):
+        s, cat = key
+        s_idx = supplier_order.index(s) if s in supplier_order else len(supplier_order)
+        return (s_idx, s, type_order.get(cat_types[cat], len(type_order)), cat)
+
+    rows = []
+    for key in sorted(alloc, key=sort_key):
+        s, cat = key
+        row = {"Supplier": s, "Item Category": cat, "Item Type": cat_types[cat]}
+        row.update({c: round(v) for c, v in alloc[key].items()})
+        rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def week_label(w) -> str:
+    return f"Wk {w}"
+
+
+def build_allocation_html(alloc_df: pd.DataFrame, projection_weeks) -> str:
+    """Render the supplier allocation as a bordered HTML table: supplier name
+    merged down its rows, then Item category, Item type, and one column per
+    week (blank where nothing is allocated). Inline styles so it survives
+    email clients."""
+    cell = "border:1px solid #000;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:14px;"
+    head = ["Item category", "Item type"] + [week_label(w) for w in projection_weeks]
+    out = ['<table style="border-collapse:collapse;">', "<tr>", f'<th style="{cell}"></th>']
+    out += [f'<th style="{cell}text-align:left;font-weight:normal;">{h}</th>' for h in head]
+    out.append("</tr>")
+    for supplier, grp in alloc_df.groupby("Supplier", sort=False):
+        for i, (_, row) in enumerate(grp.iterrows()):
+            out.append("<tr>")
+            if i == 0:
+                out.append(
+                    f'<td rowspan="{len(grp)}" style="{cell}text-align:center;vertical-align:middle;">'
+                    f"{html.escape(supplier)}</td>"
+                )
+            out.append(f'<td style="{cell}">{html.escape(str(row["Item Category"]))}</td>')
+            out.append(f'<td style="{cell}text-align:center;">{html.escape(str(row["Item Type"]))}</td>')
+            for w in projection_weeks:
+                v = row[f"Wk #{w}"]
+                out.append(f'<td style="{cell}text-align:right;">{f"{v:.0f}" if v else ""}</td>')
+            out.append("</tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks) -> str:
+    intro = html.escape(EMAIL_TEMPLATE_INTRO).replace("\n", "<br>")
+    return (
+        '<div style="font-family:Calibri,Arial,sans-serif;font-size:14px;">'
+        f"<p>Hello {html.escape(supplier_name)},</p>"
+        f"<p>{intro}</p>"
+        f"{build_allocation_html(supplier_alloc_df, projection_weeks)}"
+        "<p>Thank you.</p></div>"
+    )
+
+
+def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks) -> str:
+    """Plain-text fallback of the HTML email, for clients that don't render HTML."""
     lines = [f"Hello {supplier_name},", "", EMAIL_TEMPLATE_INTRO, ""]
-    for _, row in supplier_cat_df.iterrows():
-        lines.append(f"- Item Category: {row['Item Category']} ({row['Item Type']})")
+    for _, row in supplier_alloc_df.iterrows():
+        lines.append(f"- {row['Item Category']} ({row['Item Type']})")
         for w in projection_weeks:
-            val = row[f"Wk #{w}"]
-            if val and val > 0:
-                lines.append(f"    Wk #{w}: {val:,.0f}")
-        lines.append("")
-    lines.append("Thank you.")
+            v = row[f"Wk #{w}"]
+            if v:
+                lines.append(f"    {week_label(w)}: {v:.0f}")
+    lines += ["", "Thank you."]
     return "\n".join(lines)

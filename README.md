@@ -6,19 +6,22 @@
 2. Generates a two-sheet report: **PO Issued** (flat PO list, 2-week delivery
    window incl. overdue) and **PO Projection** (one row per Item Category,
    week-wise MOQ-adjusted projection, categories with a projection only).
-3. Three tabs — **CFC / CTN / TRAY** — each showing that type's categories
-   with a projection, a supplier multiselect, and an averaged
-   (total ÷ selected count) projection per week when suppliers are selected.
-4. A **supplier-wise preview**: pick a supplier, see every category/week
-   relevant to their type.
-5. **Email a supplier** their category-wise projection, using the fixed
-   template (see `logic.EMAIL_TEMPLATE_INTRO`).
+3. **Assign suppliers** — three tabs (**CFC / CTN / TRAY**), each a grid of
+   that type's categories with a projection. Next to every week's quantity
+   is a **suppliers** cell: tap it and pick one or more suppliers from the
+   dropdown. The quantity is split evenly between the picked suppliers
+   (1000 with 4 suppliers = 250 each; rounded to whole units).
+4. A **supplier-wise preview** table: supplier name merged down its rows,
+   then Item category, Item type, and one column per week.
+5. **Email a supplier** (or all assigned suppliers) their allocation, using
+   the fixed template (see `logic.EMAIL_TEMPLATE_INTRO`) with the same table
+   as an HTML email (plain-text fallback included).
 
 ## Files
 - `app.py` — Streamlit UI only.
 - `logic.py` — all parsing/business logic, no Streamlit dependency
   (importable/testable on its own — see the smoke test in chat history).
-- `requirements.txt` — `streamlit`, `pandas`, `openpyxl`.
+- `requirements.txt` — `streamlit` (1.50+ for the dropdown cells), `pandas`, `openpyxl`.
 - `.streamlit/secrets.toml.example` — copy to `.streamlit/secrets.toml`
   (local) or paste into the app's Secrets box (Streamlit Community Cloud).
 
