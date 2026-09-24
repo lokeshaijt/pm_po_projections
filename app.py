@@ -172,7 +172,7 @@ if "category_df" in st.session_state:
                 continue
             suppliers = L.SUPPLIERS_BY_TYPE.get(item_type, [])
             editor_df = pd.DataFrame({"Item Category": sub["Item Category"].values})
-            column_config = {"Item Category": st.column_config.TextColumn(disabled=True, pinned=True)}
+            column_config = {"Item Category": st.column_config.TextColumn(disabled=True)}
             # Only weeks where this type has some projection get a column pair.
             tab_weeks = [w for w in projection_weeks if (sub[f"Wk #{w}"] > 0).any()]
             for w in tab_weeks:
@@ -181,11 +181,13 @@ if "category_df" in st.session_state:
                 editor_df[sup_col] = [[] for _ in range(len(sub))]
                 column_config[qty_col] = st.column_config.TextColumn(L.week_label(w), disabled=True)
                 column_config[sup_col] = st.column_config.MultiselectColumn(
-                    f"{L.week_label(w)} suppliers", options=suppliers, width="medium",
+                    f"{L.week_label(w)} suppliers", options=suppliers, width="medium", color=ui.GOLD_LIGHT,
                     help=f"Suppliers for the {L.week_label(w)} projection; it is split evenly between them.",
                 )
+            # Read-only columns are drawn faded by default; force dark text.
+            text_cols = ["Item Category"] + [f"Wk #{w}" for w in tab_weeks]
             edited = st.data_editor(
-                editor_df,
+                editor_df.style.set_properties(subset=text_cols, color="#111111"),
                 column_config=column_config,
                 hide_index=True,
                 use_container_width=True,
