@@ -71,8 +71,14 @@ PO_WINDOW_DAYS = 14
 # file (case/spacing ignored). Items listed in the app's "not in the Item
 # Category Master" warning are the ones that need an entry here.
 CATEGORY_OVERRIDES: dict = {
-    # 'ITM09821': '25TB DC ENV (AFRICA)',
-    # 'GARDEN STRAWBERRY 25 SC ENV TBGS': '25TB DC ENV (AFRICA)',
+    # GV 25 SC ENV flavours missing from the master (only their VINDEMIA SF
+    # variants are listed, under another category); confirmed by the user to
+    # belong with "CTN GV MANGO 25 SC ENV" under 25TB DC ENV (AFRICA).
+    "CTN GV GARDEN STRAWBERRY 25 SC ENV TBGS": "25TB DC ENV (AFRICA)",
+    "CTN GV MINT 25 SC ENV TBGS": "25TB DC ENV (AFRICA)",
+    "CTN GV ORANGE 25 SC ENV TBGS": "25TB DC ENV (AFRICA)",
+    "CTN GV ROYAL LEMON 25 SC ENV TBGS": "25TB DC ENV (AFRICA)",
+    "CTN GV SPICY GINGER 25 SC ENV TBGS": "25TB DC ENV (AFRICA)",
 }
 
 
@@ -303,6 +309,14 @@ def compute_moq(item_code, category, qty, item_names, laminated_codes):
     return round(qty * 1.02)
 
 
+def _cat_type(category, master_name_to_cat, master_name_to_type):
+    """Item Type used by the master for a given category (first match)."""
+    for name, cat in master_name_to_cat.items():
+        if cat == category and master_name_to_type.get(name):
+            return master_name_to_type[name]
+    return None
+
+
 _OVERRIDES_BY_NAME = {normalize_name(k): v for k, v in CATEGORY_OVERRIDES.items()}
 
 
@@ -319,7 +333,8 @@ def build_item_category_map(req_data, master_name_to_cat, master_name_to_type):
             fine_cat = override
         if fine_cat:
             item_to_cat[code] = fine_cat
-            item_to_type[code] = master_name_to_type.get(norm, (categories.get(code) or "").strip().upper())
+            item_to_type[code] = master_name_to_type.get(norm) or _cat_type(fine_cat, master_name_to_cat, master_name_to_type) \
+                or (categories.get(code) or "").strip().upper()
     return item_to_cat, item_to_type
 
 

@@ -90,13 +90,11 @@ to date as the durable copy.
    auto-redeploys.
 
 ## Known open items (as of last handoff)
-- 5 CTN items ("...25 SC ENV TBGS" flavors: Garden Strawberry, Mint,
-  Orange, Royal Lemon, Spicy Ginger) were manually confirmed to map to
-  "25TB DC ENV (AFRICA)" in chat, but that override is **not yet wired
-  into `CATEGORY_OVERRIDES`**. Until it is, 25TB DC ENV (AFRICA) comes out
-  lower than the manual sheet. The app now lists every CFC/CTN/TRAY item
-  with a projection that isn't in the master ("Show items left out");
-  add those by code or item name to `CATEGORY_OVERRIDES`.
+- 5 CTN items (CTN GV Garden Strawberry / Mint / Orange / Royal Lemon /
+  Spicy Ginger 25 SC ENV TBGS) are not in the Item Category Master and are
+  mapped to "25TB DC ENV (AFRICA)" by item name in `CATEGORY_OVERRIDES`. If
+  the Requirement file spells them differently, they show up under "Show
+  items left out" in the app. Adding them to the master is the lasting fix.
 - Whether ANGLE/BOPP/THREAD/T-SHIRT/LAMINATED-ROLLS items should get their
   own rows in PO Projection (under coarse labels) instead of being
   excluded is still an open question for the user.
