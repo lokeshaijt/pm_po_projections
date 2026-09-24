@@ -59,14 +59,6 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
 .jay-section h3 {{ margin: 0 !important; padding: 0 !important; font-size: 1.3rem !important; color: {BLACK}; }}
 .jay-sub {{ color: #6B6457; font-size: .9rem; margin: 0 0 .8rem; }}
 
-/* Summary cards. */
-.jay-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .8rem; margin: .4rem 0 .6rem; }}
-.jay-card {{ background: #fff; border: 1px solid #E4DCC8; border-left: 5px solid {GOLD};
-    border-radius: 12px; padding: .75rem 1rem; }}
-.jay-card .v {{ font-size: 1.5rem; font-weight: 800; color: {BLACK}; line-height: 1.2; }}
-.jay-card .l {{ font-size: .8rem; color: #6B6457; text-transform: uppercase; letter-spacing: .04em; }}
-.jay-card.alert {{ border-left-color: #D64545; }}
-
 /* Getting-started steps. */
 .jay-steps {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .8rem; margin-top: .6rem; }}
 .jay-steps div {{ background: #fff; border: 1px solid #E4DCC8; border-top: 4px solid {GOLD}; border-radius: 12px; padding: .9rem 1rem; }}
@@ -118,15 +110,6 @@ def sidebar_title(text: str) -> None:
 
 def sidebar_note(text: str) -> None:
     st.markdown(f'<div class="jay-side-note">{text}</div>', unsafe_allow_html=True)
-
-
-def cards(items) -> None:
-    """items: [(label, value, alert_bool), ...]"""
-    html = "".join(
-        f'<div class="jay-card{" alert" if alert else ""}"><div class="v">{value}</div><div class="l">{label}</div></div>'
-        for label, value, alert in items
-    )
-    st.markdown(f'<div class="jay-cards">{html}</div>', unsafe_allow_html=True)
 
 
 def getting_started() -> None:

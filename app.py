@@ -129,15 +129,6 @@ if "category_df" in st.session_state:
     po_issued = st.session_state["po_issued"]
 
     unmatched_df = st.session_state.get("unmatched_df")
-    overdue = int((po_issued["No. of days to arrive"] < 0).sum()) if len(po_issued) else 0
-    ui.cards([
-        ("PO Issued rows", f"{len(po_issued):,}", False),
-        ("Overdue POs", f"{overdue:,}", overdue > 0),
-        ("Categories with projection", f"{int((category_df['Total'] > 0).sum()):,}", False),
-        ("Projection weeks", f"Wk {projection_weeks[0]}–{projection_weeks[-1]}" if projection_weeks else "—", False),
-        ("Items left out", f"{0 if unmatched_df is None else len(unmatched_df):,}",
-         unmatched_df is not None and not unmatched_df.empty),
-    ])
     if unmatched_df is not None and not unmatched_df.empty:
         st.warning(
             f"{len(unmatched_df)} item(s) with a projection are not in the Item Category Master, "
