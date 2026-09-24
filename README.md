@@ -82,7 +82,7 @@ to date as the durable copy.
    `secrets.toml` — only the `.example` file.
 2. Go to https://share.streamlit.io, "New app", point it at the repo,
    branch, and `app.py` as the entry point.
-3. In the app's Settings → Secrets, paste the contents of
+3. In the app's Settings → Secrets, paste the `[smtp]` table from
    `.streamlit/secrets.toml.example` filled in with real SMTP credentials
    (e.g. a Gmail address + app password, or your company's SMTP relay) and
    real supplier email addresses.

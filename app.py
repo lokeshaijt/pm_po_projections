@@ -42,17 +42,33 @@ def update_supplier_emails(emails: dict) -> None:
     L.save_supplier_emails(EMAILS_PATH, emails)
 
 
-def send_email(smtp_host, smtp_port, username, password, to_emails, subject, text_body, html_body):
+def smtp_settings() -> dict:
+    """SMTP settings from secrets, either as an [smtp] table
+    (server, port, username, password, optional sender) or as flat
+    smtp_host / smtp_port / smtp_username / smtp_password keys."""
+    if "smtp" in st.secrets:
+        cfg = st.secrets["smtp"]
+        host, port, user, pwd = cfg["server"], cfg["port"], cfg["username"], cfg["password"]
+        sender = cfg.get("sender", user)
+    else:
+        host, port = st.secrets["smtp_host"], st.secrets["smtp_port"]
+        user, pwd = st.secrets["smtp_username"], st.secrets["smtp_password"]
+        sender = st.secrets.get("smtp_sender", user)
+    return {"host": host, "port": int(port), "username": user, "password": pwd, "sender": sender}
+
+
+def send_email(to_emails, subject, text_body, html_body):
+    cfg = smtp_settings()
     msg = MIMEMultipart("alternative")
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
     msg["Subject"] = subject
-    msg["From"] = username
+    msg["From"] = cfg["sender"]
     msg["To"] = ", ".join(to_emails)
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
+    with smtplib.SMTP(cfg["host"], cfg["port"]) as server:
         server.starttls()
-        server.login(username, password)
-        server.sendmail(username, to_emails, msg.as_string())
+        server.login(cfg["username"], cfg["password"])
+        server.sendmail(cfg["sender"], to_emails, msg.as_string())
 
 
 st.title("PM PO Projection Mailer")
@@ -180,8 +196,8 @@ if "category_df" in st.session_state:
     st.divider()
     st.header("5. Email suppliers")
     st.caption(
-        "Requires SMTP credentials in Streamlit secrets: "
-        "`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`. "
+        "Requires SMTP credentials in Streamlit secrets: an `[smtp]` table with "
+        "`server`, `port`, `username`, `password` (optional `sender`). "
         "Supplier email IDs are managed in the **Supplier email IDs** section below."
     )
     # Pending POs (PO Issued window) grouped under their roster supplier name.
@@ -214,10 +230,6 @@ if "category_df" in st.session_state:
             if not to_emails:
                 raise ValueError("no email ID saved — add one under Supplier email IDs")
             send_email(
-                st.secrets["smtp_host"],
-                int(st.secrets["smtp_port"]),
-                st.secrets["smtp_username"],
-                st.secrets["smtp_password"],
                 to_emails,
                 f"PO Issued & Item Category-wise Projection — {supplier}",
                 text_body,
