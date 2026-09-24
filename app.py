@@ -250,7 +250,7 @@ if "category_df" in st.session_state:
                 raise ValueError("no email ID saved — add one under Supplier email IDs")
             send_email(
                 to_emails,
-                f"PO Issued & Item Category-wise Projection — {supplier}",
+                f"Pending delivery & Item Category-wise Projection — {supplier}",
                 text_body,
                 html_body,
             )
