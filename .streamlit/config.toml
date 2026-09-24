@@ -1,0 +1,19 @@
+# Brand theme taken from the JAY logo: black, gold, light gold.
+[theme]
+base = "light"
+primaryColor = "#E0A812"
+backgroundColor = "#FAF8F3"
+secondaryBackgroundColor = "#F3EEE2"
+textColor = "#1A1A1A"
+linkColor = "#8A6400"
+borderColor = "#E4DCC8"
+dataframeHeaderBackgroundColor = "#FFF3C4"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#111111"
+secondaryBackgroundColor = "#232323"
+textColor = "#F5F1E6"
+borderColor = "#3A3A3A"
+linkColor = "#F1BA19"

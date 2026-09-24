@@ -20,8 +20,10 @@ import pandas as pd
 import streamlit as st
 
 import logic as L
+import ui
 
-st.set_page_config(page_title="PM PO Projection Mailer", layout="wide")
+st.set_page_config(page_title="PM PO Projection Mailer", page_icon=str(ui.LOGO_PATH), layout="wide")
+ui.inject_css()
 
 
 EMAILS_PATH = Path(__file__).parent / "supplier_emails.json"
@@ -71,14 +73,14 @@ def send_email(to_emails, subject, text_body, html_body):
         server.sendmail(cfg["sender"], to_emails, msg.as_string())
 
 
-st.title("PM PO Projection Mailer")
-st.caption(
-    "Upload the Pending PO and PM Requirement files to generate the report, "
-    "browse category-wise projections, and email suppliers directly."
+ui.hero(
+    "PM PO Projection Mailer",
+    "Generate the PO report, assign week-wise projections to suppliers, and email them directly.",
 )
 
 with st.sidebar:
-    st.header("1. Upload files")
+    st.logo(str(ui.LOGO_PATH), size="large")
+    ui.sidebar_title("① Upload files")
     po_file = st.file_uploader("Pending PO file (.xlsx)", type="xlsx", key="po_file")
     req_file = st.file_uploader("PM Requirement file (.xlsx)", type="xlsx", key="req_file")
     master_file = st.file_uploader(
@@ -86,7 +88,8 @@ with st.sidebar:
         help="Columns: ITEM NAME, Item Type, ITEM CATEGORY (any order).",
     )
     today = st.date_input("As-of date", value=date.today())
-    generate = st.button("Generate report", type="primary")
+    generate = st.button("Generate report", type="primary", use_container_width=True)
+    ui.sidebar_note(f"PO Issued covers deliveries due in the next {L.PO_WINDOW_DAYS} days, plus overdue.")
 
 if generate:
     if not (po_file and req_file and master_file):
@@ -126,6 +129,15 @@ if "category_df" in st.session_state:
     po_issued = st.session_state["po_issued"]
 
     unmatched_df = st.session_state.get("unmatched_df")
+    overdue = int((po_issued["No. of days to arrive"] < 0).sum()) if len(po_issued) else 0
+    ui.cards([
+        ("PO Issued rows", f"{len(po_issued):,}", False),
+        ("Overdue POs", f"{overdue:,}", overdue > 0),
+        ("Categories with projection", f"{int((category_df['Total'] > 0).sum()):,}", False),
+        ("Projection weeks", f"Wk {projection_weeks[0]}–{projection_weeks[-1]}" if projection_weeks else "—", False),
+        ("Items left out", f"{0 if unmatched_df is None else len(unmatched_df):,}",
+         unmatched_df is not None and not unmatched_df.empty),
+    ])
     if unmatched_df is not None and not unmatched_df.empty:
         st.warning(
             f"{len(unmatched_df)} item(s) with a projection are not in the Item Category Master, "
@@ -135,8 +147,7 @@ if "category_df" in st.session_state:
         with st.expander("Show items left out"):
             st.dataframe(unmatched_df, hide_index=True, use_container_width=True)
 
-    st.divider()
-    st.header("2. Download report")
+    ui.section(2, "Download report", "PO Issued and PO Projection sheets.")
     st.download_button(
         "Download PM PO Report (.xlsx)",
         data=st.session_state["report_bytes"],
@@ -144,12 +155,10 @@ if "category_df" in st.session_state:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    st.divider()
-    st.header("3. Assign suppliers")
-    st.caption(
-        "Tap a **suppliers** cell next to a week's projection and pick one or more suppliers. "
-        "The projection is split evenly between the suppliers you pick "
-        "(e.g. 1000 with 4 suppliers = 250 each)."
+    ui.section(
+        3, "Assign suppliers",
+        "Tap a <b>suppliers</b> cell next to a week's projection and pick one or more suppliers. "
+        "The projection is split evenly between them (e.g. 1000 with 4 suppliers = 250 each).",
     )
     report_id = st.session_state.get("report_id", 0)
     selections = {}
@@ -197,8 +206,7 @@ if "category_df" in st.session_state:
 
     alloc_df = L.allocate_to_suppliers(category_df, selections, projection_weeks)
 
-    st.divider()
-    st.header("4. Supplier-wise preview")
+    ui.section(4, "Supplier-wise preview", "What each supplier will receive, week by week.")
     if alloc_df.empty:
         st.info("Assign suppliers in section 3 to see the supplier-wise projection here.")
     else:
@@ -212,8 +220,7 @@ if "category_df" in st.session_state:
         help="PO Issued, PO Projection and Supplier-wise Projection sheets.",
     )
 
-    st.divider()
-    st.header("5. Email suppliers")
+    ui.section(5, "Email suppliers")
     st.caption(
         "Requires SMTP credentials in Streamlit secrets: an `[smtp]` table with "
         "`server`, `port`, `username`, `password` (optional `sender`). "
@@ -279,10 +286,9 @@ if "category_df" in st.session_state:
                 st.error(f"{supplier}: failed to send email: {e}")
 else:
     st.info("Upload the three files in the sidebar and click **Generate report** to get started.")
+    ui.getting_started()
 
-st.divider()
-st.header("Supplier email IDs")
-st.caption("Emails go to every ID saved for the supplier.")
+ui.section("@", "Supplier email IDs", "Emails go to every ID saved for the supplier.")
 emails = get_supplier_emails()
 for supplier in L.all_suppliers():
     saved = emails.get(supplier, [])

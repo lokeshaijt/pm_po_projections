@@ -27,6 +27,8 @@
 
 ## Files
 - `app.py` — Streamlit UI only.
+- `ui.py` — branding/CSS helpers (header, section headings, summary cards);
+  `.streamlit/config.toml` holds the JAY black & gold theme, `assets/` the logo.
 - `logic.py` — all parsing/business logic, no Streamlit dependency
   (importable/testable on its own — see the smoke test in chat history).
 - `requirements.txt` — `streamlit` (1.50+ for the dropdown cells), `pandas`, `openpyxl`.
