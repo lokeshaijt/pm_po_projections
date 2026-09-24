@@ -31,6 +31,16 @@
 - `.streamlit/secrets.toml.example` — copy to `.streamlit/secrets.toml`
   (local) or paste into the app's Secrets box (Streamlit Community Cloud).
 
+## Supplier email IDs
+The **Supplier email IDs** section at the bottom of the app lists every
+supplier: **Add** → type the ID → **Save**, and **Remove** next to each saved
+ID. A supplier can have several IDs; emails go to all of them. IDs are stored
+in `supplier_emails.json` next to `app.py` (git-ignored). On first run the
+file is seeded from the optional `[supplier_emails]` table in secrets.
+**On Streamlit Community Cloud that file is reset whenever the app restarts
+or redeploys** (every push), so keep the `[supplier_emails]` secrets table up
+to date as the durable copy.
+
 ## Business rules encoded in `logic.py`
 - **MOQ tiers** (`TIERS`): CFC/TRAY [250,500,1000,3000,5000,10000],
   CTN [5000,...,200000], plus single-tier categories (T-SHIRT, ANGLE, BOPP,
@@ -59,7 +69,7 @@
   SRI RANGA INDUSTRIES, Sri Venkateswara Packings); CTN has 3 (Lovely
   Offset Printers (P) Ltd, Salem Print Pack, Shraddha Saburi Printers
   Private Limited). Update this dict if the roster changes.
-- **PO Issued window**: 2 weeks by default (configurable in the sidebar),
+- **PO Issued window**: fixed at 14 days (`PO_WINDOW_DAYS` in `logic.py`),
   **including already-overdue** deliveries (not just future ones) — a
   pending PO with a past delivery date is still open and still urgent.
 - **Delay styling**: "No. of days to arrive" shown in bold red with a red

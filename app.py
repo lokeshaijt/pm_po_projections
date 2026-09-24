@@ -11,6 +11,7 @@ so it's independently testable); this file is the UI layer only.
 """
 
 import smtplib
+from pathlib import Path
 from datetime import date
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -23,17 +24,35 @@ import logic as L
 st.set_page_config(page_title="PM PO Projection Mailer", layout="wide")
 
 
-def send_email(smtp_host, smtp_port, username, password, to_email, subject, text_body, html_body):
+EMAILS_PATH = Path(__file__).parent / "supplier_emails.json"
+
+
+def get_supplier_emails() -> dict:
+    if "supplier_emails" not in st.session_state:
+        try:
+            seed = dict(st.secrets.get("supplier_emails", {}))
+        except Exception:  # no secrets.toml at all
+            seed = {}
+        st.session_state["supplier_emails"] = L.load_supplier_emails(EMAILS_PATH, seed)
+    return st.session_state["supplier_emails"]
+
+
+def update_supplier_emails(emails: dict) -> None:
+    st.session_state["supplier_emails"] = emails
+    L.save_supplier_emails(EMAILS_PATH, emails)
+
+
+def send_email(smtp_host, smtp_port, username, password, to_emails, subject, text_body, html_body):
     msg = MIMEMultipart("alternative")
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
     msg["Subject"] = subject
     msg["From"] = username
-    msg["To"] = to_email
+    msg["To"] = ", ".join(to_emails)
     with smtplib.SMTP(smtp_host, smtp_port) as server:
         server.starttls()
         server.login(username, password)
-        server.sendmail(username, [to_email], msg.as_string())
+        server.sendmail(username, to_emails, msg.as_string())
 
 
 st.title("PM PO Projection Mailer")
@@ -51,7 +70,6 @@ with st.sidebar:
         help="Columns: ITEM NAME, Item Type, ITEM CATEGORY (any order).",
     )
     today = st.date_input("As-of date", value=date.today())
-    window_days = st.number_input("Delivery window (days)", min_value=1, max_value=90, value=14)
     generate = st.button("Generate report", type="primary")
 
 if generate:
@@ -64,7 +82,7 @@ if generate:
             name_to_cat, name_to_type = L.load_category_master(master_file)
             item_to_cat, item_to_type = L.build_item_category_map(req_data, name_to_cat, name_to_type)
             item_week_proj = L.build_item_week_projections(req_data)
-            po_issued = L.build_po_issued_df(po_df, today, window_days)
+            po_issued = L.build_po_issued_df(po_df, today, L.PO_WINDOW_DAYS)
 
             category_order = sorted(set(name_to_cat.values()))
             category_df = L.build_category_table(
@@ -163,8 +181,8 @@ if "category_df" in st.session_state:
     st.header("5. Email suppliers")
     st.caption(
         "Requires SMTP credentials in Streamlit secrets: "
-        "`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, "
-        "and a mapping of supplier name -> email address under `supplier_emails`."
+        "`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`. "
+        "Supplier email IDs are managed in the **Supplier email IDs** section below."
     )
     # Pending POs (PO Issued window) grouped under their roster supplier name.
     po_mail = po_issued.copy()
@@ -192,21 +210,25 @@ if "category_df" in st.session_state:
 
         def send_to(supplier):
             text_body, html_body = email_parts(supplier)
-            to_email = st.secrets["supplier_emails"][supplier]
+            to_emails = get_supplier_emails().get(supplier, [])
+            if not to_emails:
+                raise ValueError("no email ID saved — add one under Supplier email IDs")
             send_email(
                 st.secrets["smtp_host"],
                 int(st.secrets["smtp_port"]),
                 st.secrets["smtp_username"],
                 st.secrets["smtp_password"],
-                to_email,
+                to_emails,
                 f"PO Issued & Item Category-wise Projection — {supplier}",
                 text_body,
                 html_body,
             )
-            return to_email
+            return ", ".join(to_emails)
 
         email_supplier = st.selectbox("Send email to", mail_suppliers, key="email_supplier")
         st.write("**Email preview**")
+        recipients = get_supplier_emails().get(email_supplier, [])
+        st.caption("To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —"))
         with st.container(border=True):
             st.markdown(email_parts(email_supplier)[1], unsafe_allow_html=True)
 
@@ -221,8 +243,51 @@ if "category_df" in st.session_state:
                 to_email = send_to(supplier)
                 st.success(f"Email sent to {supplier} ({to_email}).")
             except KeyError as e:
-                st.error(f"{supplier}: missing secret {e}. Configure SMTP + supplier_emails in Streamlit secrets.")
+                st.error(f"{supplier}: missing secret {e}. Configure SMTP in Streamlit secrets.")
             except Exception as e:
                 st.error(f"{supplier}: failed to send email: {e}")
 else:
     st.info("Upload the three files in the sidebar and click **Generate report** to get started.")
+
+st.divider()
+st.header("Supplier email IDs")
+st.caption("Emails go to every ID saved for the supplier.")
+emails = get_supplier_emails()
+for supplier in L.all_suppliers():
+    saved = emails.get(supplier, [])
+    types = "/".join(t for t, sups in L.SUPPLIERS_BY_TYPE.items() if supplier in sups)
+    label = f"{supplier} ({types})" + (f" — {', '.join(saved)}" if saved else " — no email ID")
+    with st.expander(label, expanded=st.session_state.get("email_open") == supplier):
+        for addr in saved:
+            c_addr, c_rm = st.columns([5, 1])
+            c_addr.write(addr)
+            if c_rm.button("Remove", key=f"rm_{supplier}_{addr}"):
+                st.session_state["email_open"] = supplier
+                update_supplier_emails({**emails, supplier: [e for e in saved if e != addr]})
+                st.rerun()
+
+        adding_key = f"adding_{supplier}"
+        if not st.session_state.get(adding_key):
+            if st.button("Add", key=f"add_{supplier}"):
+                st.session_state["email_open"] = supplier
+                st.session_state[adding_key] = True
+                st.rerun()
+        else:
+            with st.form(f"form_{supplier}", clear_on_submit=True, border=False):
+                new_addr = st.text_input("Email ID", placeholder="name@company.com")
+                c_save, c_cancel = st.columns(2)
+                save = c_save.form_submit_button("Save", type="primary")
+                cancel = c_cancel.form_submit_button("Cancel")
+            if cancel:
+                st.session_state[adding_key] = False
+                st.rerun()
+            if save:
+                new_addr = new_addr.strip()
+                if not L.is_valid_email(new_addr):
+                    st.error("Enter a valid email ID, e.g. name@company.com.")
+                elif new_addr.lower() in (e.lower() for e in saved):
+                    st.warning(f"{new_addr} is already saved for {supplier}.")
+                else:
+                    update_supplier_emails({**emails, supplier: saved + [new_addr]})
+                    st.session_state[adding_key] = False
+                    st.rerun()

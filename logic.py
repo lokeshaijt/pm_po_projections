@@ -7,6 +7,7 @@ and reused (e.g. from a CLI or notebook) independently of the UI.
 
 import html
 import io
+import json
 import re
 from collections import defaultdict
 from datetime import date
@@ -59,6 +60,10 @@ SUPPLIERS_BY_TYPE = {
 }
 
 ITEM_TYPES = ["CFC", "CTN", "TRAY"]
+
+# PO Issued covers deliveries due within this many days of the as-of date,
+# plus anything already overdue.
+PO_WINDOW_DAYS = 14
 
 # Known corrections for items whose live description doesn't exactly match
 # the master (e.g. "SC ENV" vs "DC ENV" naming variants). Extend as needed.
@@ -685,3 +690,38 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
         lines.append("")
     lines.append("Thank you.")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Supplier email IDs (JSON file store)
+# ---------------------------------------------------------------------------
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def all_suppliers() -> list:
+    return list(dict.fromkeys(s for sups in SUPPLIERS_BY_TYPE.values() for s in sups))
+
+
+def is_valid_email(addr: str) -> bool:
+    return bool(EMAIL_RE.match((addr or "").strip()))
+
+
+def load_supplier_emails(path, seed=None) -> dict:
+    """Return {supplier: [email, ...]} from the JSON file at `path`. If the
+    file doesn't exist yet, start from `seed` ({supplier: "a@x, b@y" or list}),
+    e.g. the supplier_emails table in Streamlit secrets."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+        for supplier, value in (seed or {}).items():
+            items = value.split(",") if isinstance(value, str) else list(value)
+            data[supplier] = [e.strip() for e in items if is_valid_email(e)]
+    return {s: list(dict.fromkeys(data.get(s, []))) for s in set(all_suppliers()) | set(data)}
+
+
+def save_supplier_emails(path, emails: dict) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({s: v for s, v in emails.items() if v}, f, indent=2, sort_keys=True)
