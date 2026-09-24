@@ -12,7 +12,9 @@
    dropdown. The quantity is split evenly between the picked suppliers
    (1000 with 4 suppliers = 250 each; rounded to whole units).
 4. A **supplier-wise preview** table: supplier name merged down its rows,
-   then Item category, Item type, and one column per week.
+   then Item category, Item type, and one column per week. **Download full
+   report** gives the PO Issued + PO Projection sheets plus this table as a
+   **Supplier-wise Projection** sheet. All sheets use Calibri.
 5. **Email a supplier** (or all listed suppliers). Each email has two
    tables: **PO Issued** (that supplier's pending POs in the delivery window,
    overdue included, negative days in red) and **PO Projection** (their

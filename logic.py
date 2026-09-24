@@ -414,7 +414,7 @@ def build_category_table(item_week_proj, item_to_cat, item_to_type, category_ord
 
 def style_header_cell(cell, fill_hex="F4B183"):
     thin = Side(style="thin", color="000000")
-    cell.font = Font(name="Arial", bold=True, size=11)
+    cell.font = Font(name="Calibri", bold=True, size=11)
     cell.fill = PatternFill(start_color=fill_hex, end_color=fill_hex, fill_type="solid")
     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -422,14 +422,60 @@ def style_header_cell(cell, fill_hex="F4B183"):
 
 def style_data_cell(cell, bold=False, color=None, fill_hex=None):
     thin = Side(style="thin", color="000000")
-    cell.font = Font(name="Arial", size=11, bold=bold, color=color)
+    cell.font = Font(name="Calibri", size=11, bold=bold, color=color)
     if fill_hex:
         cell.fill = PatternFill(start_color=fill_hex, end_color=fill_hex, fill_type="solid")
     cell.alignment = Alignment(horizontal="center", vertical="center")
     cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
 
-def generate_report_workbook(po_issued: pd.DataFrame, category_df: pd.DataFrame, projection_weeks) -> bytes:
+def write_supplier_projection_sheet(ws, alloc_df: pd.DataFrame, projection_weeks) -> None:
+    """Same layout as the in-app supplier-wise preview: supplier name merged
+    down its rows, Item category, Item type, one column per week."""
+    headers = ["Supplier", "Item category", "Item type"] + [week_label(w) for w in projection_weeks]
+    ws.append(headers)
+    for cidx in range(1, len(headers) + 1):
+        style_header_cell(ws.cell(row=1, column=cidx))
+
+    r = 2
+    for supplier, grp in alloc_df.groupby("Supplier", sort=False):
+        first = r
+        for _, row in grp.iterrows():
+            style_data_cell(ws.cell(row=r, column=1, value=supplier))
+            c = ws.cell(row=r, column=2, value=row["Item Category"])
+            style_data_cell(c)
+            c.alignment = Alignment(horizontal="left", vertical="center")
+            style_data_cell(ws.cell(row=r, column=3, value=row["Item Type"]))
+            for wi, w in enumerate(projection_weeks):
+                v = row[f"Wk #{w}"]
+                c = ws.cell(row=r, column=4 + wi, value=float(v) if v else None)
+                style_data_cell(c)
+                c.number_format = "#,##0"
+                c.alignment = Alignment(horizontal="right", vertical="center")
+            r += 1
+        if r - 1 > first:
+            ws.merge_cells(start_row=first, start_column=1, end_row=r - 1, end_column=1)
+
+    if alloc_df.empty:
+        ws.cell(row=2, column=1, value="No suppliers assigned yet.").font = Font(name="Calibri", size=11, italic=True)
+
+    ws.column_dimensions["A"].width = 34
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 11
+    for i in range(len(projection_weeks)):
+        ws.column_dimensions[get_column_letter(4 + i)].width = 11
+    ws.row_dimensions[1].height = 24
+    ws.freeze_panes = "B2"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+
+def generate_report_workbook(po_issued: pd.DataFrame, category_df: pd.DataFrame, projection_weeks,
+                             alloc_df: pd.DataFrame = None) -> bytes:
+    """PO Issued + PO Projection sheets; with `alloc_df` (from
+    allocate_to_suppliers) also a Supplier-wise Projection sheet."""
     wb = openpyxl.Workbook()
 
     # ---- PO Issued ----
@@ -523,6 +569,9 @@ def generate_report_workbook(po_issued: pd.DataFrame, category_df: pd.DataFrame,
     ws2.page_setup.fitToWidth = 1
     ws2.page_setup.fitToHeight = 0
     ws2.sheet_properties.pageSetUpPr.fitToPage = True
+
+    if alloc_df is not None:
+        write_supplier_projection_sheet(wb.create_sheet("Supplier-wise Projection"), alloc_df, projection_weeks)
 
     buf = io.BytesIO()
     wb.save(buf)

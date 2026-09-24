@@ -203,6 +203,14 @@ if "category_df" in st.session_state:
         st.info("Assign suppliers in section 3 to see the supplier-wise projection here.")
     else:
         st.markdown(L.build_allocation_html(alloc_df, projection_weeks), unsafe_allow_html=True)
+    st.download_button(
+        "Download full report (.xlsx)",
+        data=L.generate_report_workbook(po_issued, category_df, projection_weeks, alloc_df),
+        file_name=f"PM_PO_Full_Report_{date.today().isoformat()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+        help="PO Issued, PO Projection and Supplier-wise Projection sheets.",
+    )
 
     st.divider()
     st.header("5. Email suppliers")
