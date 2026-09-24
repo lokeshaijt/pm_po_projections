@@ -430,7 +430,7 @@ def style_data_cell(cell, bold=False, color=None, fill_hex=None):
 
 
 def write_supplier_projection_sheet(ws, alloc_df: pd.DataFrame, projection_weeks) -> None:
-    """Same layout as the in-app supplier-wise preview: supplier name merged
+    """Same layout as the in-app supplier-wise projection: supplier name merged
     down its rows, Item category, Item type, one column per week."""
     headers = ["Supplier", "Item category", "Item type"] + [week_label(w) for w in projection_weeks]
     ws.append(headers)

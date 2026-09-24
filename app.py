@@ -199,7 +199,7 @@ if "category_df" in st.session_state:
 
     alloc_df = L.allocate_to_suppliers(category_df, selections, projection_weeks)
 
-    ui.section(4, "Supplier-wise preview", "What each supplier will receive, week by week.")
+    ui.section(4, "Supplier-wise projection", "What each supplier will receive, week by week.")
     if alloc_df.empty:
         st.info("Assign suppliers in section 3 to see the supplier-wise projection here.")
     else:
