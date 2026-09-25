@@ -432,7 +432,7 @@ def style_data_cell(cell, bold=False, color=None, fill_hex=None):
 def write_supplier_projection_sheet(ws, alloc_df: pd.DataFrame, projection_weeks) -> None:
     """Same layout as the in-app supplier-wise projection: supplier name merged
     down its rows, Item category, Item type, one column per week."""
-    headers = ["Supplier", "Item category", "Item type"] + [week_label(w) for w in projection_weeks]
+    headers = ["Supplier name", "Item category", "Item type"] + [week_label(w) for w in projection_weeks]
     ws.append(headers)
     for cidx in range(1, len(headers) + 1):
         style_header_cell(ws.cell(row=1, column=cidx))
@@ -648,7 +648,7 @@ def build_allocation_html(alloc_df: pd.DataFrame, projection_weeks) -> str:
     email clients."""
     cell = "border:1px solid #000;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:14px;"
     head = ["Item category", "Item type"] + [week_label(w) for w in projection_weeks]
-    out = ['<table style="border-collapse:collapse;">', "<tr>", f'<th style="{cell}"></th>']
+    out = ['<table style="border-collapse:collapse;">', "<tr>", f'<th style="{cell}text-align:left;font-weight:normal;">Supplier name</th>']
     out += [f'<th style="{cell}text-align:left;font-weight:normal;">{h}</th>' for h in head]
     out.append("</tr>")
     for supplier, grp in alloc_df.groupby("Supplier", sort=False):
