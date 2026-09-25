@@ -583,7 +583,7 @@ def generate_report_workbook(po_issued: pd.DataFrame, category_df: pd.DataFrame,
 # ---------------------------------------------------------------------------
 
 EMAIL_TEMPLATE_INTRO = (
-    "Please find the Item category wise projection Qty for upcoming weeks.\n\n"
+    "Please find the Item category wise projections for upcoming weeks.\n\n"
     "Note: Projection Qty is only to Procure raw materials. Upon the receipt "
     "of PO, you can print as per the delivery schedule."
 )
@@ -701,7 +701,8 @@ def match_roster_supplier(name):
     return None
 
 
-PO_EMAIL_INTRO = "Please find below the pending POs due for delivery (including overdue)."
+PO_EMAIL_INTRO = "Please find the below list of pending purchase orders as on today ({date})."
+EMAIL_SIGN_OFF = ["Thank you.", "MJIL - Packing Materials"]
 
 
 def _fmt_date(v) -> str:
@@ -738,30 +739,35 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     return "".join(out)
 
 
+def _po_intro(as_of) -> str:
+    return PO_EMAIL_INTRO.format(date=pd.Timestamp(as_of or date.today()).strftime("%d/%m/%Y"))
+
+
 def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
-                              supplier_po_df: pd.DataFrame = None) -> str:
+                              supplier_po_df: pd.DataFrame = None, as_of=None) -> str:
     parts = [
         '<div style="font-family:Calibri,Arial,sans-serif;font-size:14px;">',
         f"<p>Hello {html.escape(supplier_name)},</p>",
     ]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        parts += [f"<p><b>Pending delivery</b><br>{html.escape(PO_EMAIL_INTRO)}</p>",
+        parts += [f"<p>{html.escape(_po_intro(as_of))}</p>",
+                  "<p><b>Pending deliveries</b></p>",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
         parts += [f"<p><b>PO Projection</b><br>{html.escape(intro)}</p>",
-                  f'<p style="color:#FF0000;font-weight:bold;">{html.escape(note)}</p>',
-                  build_allocation_html(supplier_alloc_df, projection_weeks)]
-    parts.append("<p>Thank you.</p></div>")
+                  build_allocation_html(supplier_alloc_df, projection_weeks),
+                  f'<p style="color:#FF0000;font-weight:bold;">{html.escape(note)}</p>']
+    parts.append("<p>" + "<br>".join(html.escape(l) for l in EMAIL_SIGN_OFF) + "</p></div>")
     return "".join(parts)
 
 
 def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
-                                   supplier_po_df: pd.DataFrame = None) -> str:
+                                   supplier_po_df: pd.DataFrame = None, as_of=None) -> str:
     """Plain-text fallback of the HTML email, for clients that don't render HTML."""
     lines = [f"Hello {supplier_name},", ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        lines += ["Pending delivery", PO_EMAIL_INTRO, ""]
+        lines += [_po_intro(as_of), "", "Pending deliveries"]
         for _, row in supplier_po_df.iterrows():
             days = row["No. of days to arrive"]
             lines.append(
@@ -771,15 +777,16 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
             )
         lines.append("")
     if not supplier_alloc_df.empty:
-        lines += ["PO Projection", EMAIL_TEMPLATE_INTRO, ""]
+        intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
+        lines += ["PO Projection", intro, ""]
         for _, row in supplier_alloc_df.iterrows():
             lines.append(f"- {row['Item Category']} ({row['Item Type']})")
             for w in projection_weeks:
                 v = row[f"Wk #{w}"]
                 if v:
                     lines.append(f"    {week_label(w)}: {v:.0f}")
-        lines.append("")
-    lines.append("Thank you.")
+        lines += ["", note, ""]
+    lines += EMAIL_SIGN_OFF
     return "\n".join(lines)
 
 

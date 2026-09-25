@@ -121,6 +121,7 @@ if generate:
 
             st.session_state["unmatched_df"] = L.build_unmatched_items_df(req_data, item_week_proj, item_to_cat)
             st.session_state["po_issued"] = po_issued
+            st.session_state["as_of"] = today
             st.session_state["category_df"] = category_df
             st.session_state["projection_weeks"] = req_data["projection_weeks"]
             st.session_state["report_bytes"] = L.generate_report_workbook(
@@ -250,8 +251,8 @@ if "category_df" in st.session_state:
             s_df = alloc_df[alloc_df["Supplier"] == supplier]
             po_df = po_mail[po_mail["Roster Supplier"] == supplier]
             return (
-                L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df),
-                L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df),
+                L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df, st.session_state.get("as_of")),
+                L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df, st.session_state.get("as_of")),
             )
 
         def send_to(supplier, cc_emails):
