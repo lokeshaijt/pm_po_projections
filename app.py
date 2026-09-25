@@ -59,7 +59,16 @@ def smtp_settings() -> dict:
     return {"host": host, "port": int(port), "username": user, "password": pwd, "sender": sender}
 
 
-def send_email(to_emails, subject, text_body, html_body):
+def default_cc() -> str:
+    """Optional default Cc from secrets: cc = "a@x.com, b@y.com" in [smtp]."""
+    try:
+        cc = st.secrets["smtp"].get("cc", "") if "smtp" in st.secrets else st.secrets.get("smtp_cc", "")
+    except Exception:  # no secrets.toml at all
+        return ""
+    return ", ".join(cc) if isinstance(cc, (list, tuple)) else str(cc)
+
+
+def send_email(to_emails, subject, text_body, html_body, cc_emails=()):
     cfg = smtp_settings()
     msg = MIMEMultipart("alternative")
     msg.attach(MIMEText(text_body, "plain"))
@@ -67,10 +76,12 @@ def send_email(to_emails, subject, text_body, html_body):
     msg["Subject"] = subject
     msg["From"] = cfg["sender"]
     msg["To"] = ", ".join(to_emails)
+    if cc_emails:
+        msg["Cc"] = ", ".join(cc_emails)
     with smtplib.SMTP(cfg["host"], cfg["port"]) as server:
         server.starttls()
         server.login(cfg["username"], cfg["password"])
-        server.sendmail(cfg["sender"], to_emails, msg.as_string())
+        server.sendmail(cfg["sender"], list(to_emails) + list(cc_emails), msg.as_string())
 
 
 ui.hero(
@@ -243,7 +254,7 @@ if "category_df" in st.session_state:
                 L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df),
             )
 
-        def send_to(supplier):
+        def send_to(supplier, cc_emails):
             text_body, html_body = email_parts(supplier)
             to_emails = get_supplier_emails().get(supplier, [])
             if not to_emails:
@@ -253,13 +264,25 @@ if "category_df" in st.session_state:
                 f"Pending delivery & Item Category-wise Projection — {supplier}",
                 text_body,
                 html_body,
+                cc_emails,
             )
-            return ", ".join(to_emails)
+            return ", ".join(to_emails) + (f" · Cc: {', '.join(cc_emails)}" if cc_emails else "")
 
         email_supplier = st.selectbox("Send email to", mail_suppliers, key="email_supplier")
-        st.write("**Email preview**")
         recipients = get_supplier_emails().get(email_supplier, [])
-        st.caption("To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —"))
+        cc_text = st.text_input(
+            "Cc", value=default_cc(), key="email_cc", placeholder="name@company.com, other@company.com",
+            help="Optional. Separate several email IDs with commas. Applies to every email sent, including Send to all.",
+        )
+        cc_list = list(dict.fromkeys(e.strip() for e in cc_text.replace(";", ",").split(",") if e.strip()))
+        bad_cc = [e for e in cc_list if not L.is_valid_email(e)]
+        if bad_cc:
+            st.error("Not a valid email ID in Cc: " + ", ".join(bad_cc))
+        st.caption(
+            "To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —")
+            + (f"  ·  Cc: {', '.join(cc_list)}" if cc_list and not bad_cc else "")
+        )
+        st.write("**Email preview**")
         with st.container(border=True):
             st.markdown(email_parts(email_supplier)[1], unsafe_allow_html=True)
 
@@ -269,9 +292,12 @@ if "category_df" in st.session_state:
             targets = [email_supplier]
         if col_all.button(f"Send to all listed suppliers ({len(mail_suppliers)})"):
             targets = mail_suppliers
+        if targets and bad_cc:
+            st.error("Fix the Cc email ID(s) above before sending.")
+            targets = []
         for supplier in targets:
             try:
-                to_email = send_to(supplier)
+                to_email = send_to(supplier, cc_list)
                 st.success(f"Email sent to {supplier} ({to_email}).")
             except KeyError as e:
                 st.error(f"{supplier}: missing secret {e}. Configure SMTP in Streamlit secrets.")
