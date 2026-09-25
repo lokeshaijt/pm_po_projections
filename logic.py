@@ -755,7 +755,7 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
-        parts += [f"<p><b>PO Projection</b><br>{html.escape(intro)}</p>",
+        parts += [f"<p><b>Projections</b><br>{html.escape(intro)}</p>",
                   build_allocation_html(supplier_alloc_df, projection_weeks),
                   f'<p style="color:#FF0000;font-weight:bold;">{html.escape(note)}</p>']
     parts.append("<p>" + "<br>".join(html.escape(l) for l in EMAIL_SIGN_OFF) + "</p></div>")
@@ -778,7 +778,7 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
         lines.append("")
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
-        lines += ["PO Projection", intro, ""]
+        lines += ["Projections", intro, ""]
         for _, row in supplier_alloc_df.iterrows():
             lines.append(f"- {row['Item Category']} ({row['Item Type']})")
             for w in projection_weeks:
