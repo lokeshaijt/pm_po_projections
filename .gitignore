@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .venv/
 supplier_emails.json
+settings.json
