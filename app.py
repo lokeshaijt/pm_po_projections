@@ -20,99 +20,28 @@ import pandas as pd
 import streamlit as st
 
 import logic as L
-import storage
 import ui
 
 st.set_page_config(page_title="PM PO Projection Mailer", page_icon=str(ui.LOGO_PATH), layout="wide")
 ui.inject_css()
 
 
-EMAILS_PATH = Path(__file__).parent / "supplier_emails.json"  # legacy local file, used as a seed
-SETTINGS_PATH = Path(__file__).parent / "settings.json"
-
-
-def get_store():
-    if "settings_store" not in st.session_state:
-        st.session_state["settings_store"] = storage.make_store(st.secrets, SETTINGS_PATH)
-    return st.session_state["settings_store"]
-
-
-def get_settings() -> dict:
-    """{"supplier_emails": {supplier: [ids]}, "cc": [ids]}, loaded once per session."""
-    if "settings" not in st.session_state:
-        data = None
-        try:
-            data = get_store().load()
-        except Exception as e:
-            st.error(f"Couldn't load saved email IDs: {e}")
-        if data is None:  # first run: seed from secrets / the old local file
-            try:
-                seed = dict(st.secrets.get("supplier_emails", {}))
-            except Exception:  # no secrets.toml at all
-                seed = {}
-            cc = [c.strip() for c in default_cc().replace(";", ",").split(",") if L.is_valid_email(c)]
-            data = {"supplier_emails": L.load_supplier_emails(EMAILS_PATH, seed), "cc": cc}
-        emails = data.get("supplier_emails", {})
-        data["supplier_emails"] = {s: list(dict.fromkeys(emails.get(s, []))) for s in set(L.all_suppliers()) | set(emails)}
-        data["cc"] = list(dict.fromkeys(data.get("cc", [])))
-        st.session_state["settings"] = data
-    return st.session_state["settings"]
-
-
-def update_settings(**changes) -> bool:
-    new = {**get_settings(), **changes}
-    try:
-        get_store().save({"supplier_emails": {s: v for s, v in new["supplier_emails"].items() if v}, "cc": new["cc"]})
-    except Exception as e:
-        st.error(f"Couldn't save: {e}")
-        return False
-    st.session_state["settings"] = new
-    return True
+EMAILS_PATH = Path(__file__).parent / "supplier_emails.json"
 
 
 def get_supplier_emails() -> dict:
-    return get_settings()["supplier_emails"]
+    if "supplier_emails" not in st.session_state:
+        try:
+            seed = dict(st.secrets.get("supplier_emails", {}))
+        except Exception:  # no secrets.toml at all
+            seed = {}
+        st.session_state["supplier_emails"] = L.load_supplier_emails(EMAILS_PATH, seed)
+    return st.session_state["supplier_emails"]
 
 
-def update_supplier_emails(emails: dict) -> bool:
-    return update_settings(supplier_emails=emails)
-
-
-def email_list_editor(key: str, saved: list, on_save, what: str) -> None:
-    """Saved IDs with Remove buttons, and Add -> Email ID -> Save / Cancel.
-    on_save(new_list) persists the list and returns True on success."""
-    for addr in saved:
-        c_addr, c_rm = st.columns([5, 1])
-        c_addr.write(addr)
-        if c_rm.button("Remove", key=f"rm_{key}_{addr}"):
-            st.session_state["email_open"] = key
-            if on_save([e for e in saved if e != addr]):
-                st.rerun()
-
-    adding_key = f"adding_{key}"
-    if not st.session_state.get(adding_key):
-        if st.button("Add", key=f"add_{key}"):
-            st.session_state["email_open"] = key
-            st.session_state[adding_key] = True
-            st.rerun()
-        return
-    with st.form(f"form_{key}", clear_on_submit=True, border=False):
-        new_addr = st.text_input("Email ID", placeholder="name@company.com")
-        c_save, c_cancel = st.columns(2)
-        save = c_save.form_submit_button("Save", type="primary")
-        cancel = c_cancel.form_submit_button("Cancel")
-    if cancel:
-        st.session_state[adding_key] = False
-        st.rerun()
-    if save:
-        new_addr = new_addr.strip()
-        if not L.is_valid_email(new_addr):
-            st.error("Enter a valid email ID, e.g. name@company.com.")
-        elif new_addr.lower() in (e.lower() for e in saved):
-            st.warning(f"{new_addr} is already saved for {what}.")
-        elif on_save(saved + [new_addr]):
-            st.session_state[adding_key] = False
-            st.rerun()
+def update_supplier_emails(emails: dict) -> None:
+    st.session_state["supplier_emails"] = emails
+    L.save_supplier_emails(EMAILS_PATH, emails)
 
 
 def smtp_settings() -> dict:
@@ -342,14 +271,17 @@ if "category_df" in st.session_state:
 
         email_supplier = st.selectbox("Send email to", mail_suppliers, key="email_supplier")
         recipients = get_supplier_emails().get(email_supplier, [])
-        cc_list = get_settings()["cc"]
-        with st.expander("Cc" + (f" — {', '.join(cc_list)}" if cc_list else " — none"),
-                         expanded=st.session_state.get("email_open") == "__cc__"):
-            st.caption("Saved Cc IDs are copied on every email sent, including Send to all.")
-            email_list_editor("__cc__", cc_list, lambda v: update_settings(cc=v), "Cc")
+        cc_text = st.text_input(
+            "Cc", value=default_cc(), key="email_cc", placeholder="name@company.com, other@company.com",
+            help="Optional. Separate several email IDs with commas. Applies to every email sent, including Send to all.",
+        )
+        cc_list = list(dict.fromkeys(e.strip() for e in cc_text.replace(";", ",").split(",") if e.strip()))
+        bad_cc = [e for e in cc_list if not L.is_valid_email(e)]
+        if bad_cc:
+            st.error("Not a valid email ID in Cc: " + ", ".join(bad_cc))
         st.caption(
             "To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —")
-            + (f"  ·  Cc: {', '.join(cc_list)}" if cc_list else "")
+            + (f"  ·  Cc: {', '.join(cc_list)}" if cc_list and not bad_cc else "")
         )
         st.write("**Email preview**")
         with st.container(border=True):
@@ -361,6 +293,9 @@ if "category_df" in st.session_state:
             targets = [email_supplier]
         if col_all.button(f"Send to all listed suppliers ({len(mail_suppliers)})"):
             targets = mail_suppliers
+        if targets and bad_cc:
+            st.error("Fix the Cc email ID(s) above before sending.")
+            targets = []
         for supplier in targets:
             try:
                 to_email = send_to(supplier, cc_list)
@@ -374,19 +309,42 @@ else:
     ui.getting_started()
 
 ui.section("@", "Supplier email IDs", "Emails go to every ID saved for the supplier.")
-if not get_store().permanent:
-    st.warning(
-        "Email IDs are saved on the app server only and are lost when the app restarts or redeploys. "
-        "Add a `[github]` token to the app's Secrets to keep them permanently (see README)."
-    )
 emails = get_supplier_emails()
 for supplier in L.all_suppliers():
     saved = emails.get(supplier, [])
     types = "/".join(t for t, sups in L.SUPPLIERS_BY_TYPE.items() if supplier in sups)
     label = f"{supplier} ({types})" + (f" — {', '.join(saved)}" if saved else " — no email ID")
     with st.expander(label, expanded=st.session_state.get("email_open") == supplier):
-        email_list_editor(
-            supplier, saved,
-            lambda v, supplier=supplier: update_supplier_emails({**get_supplier_emails(), supplier: v}),
-            supplier,
-        )
+        for addr in saved:
+            c_addr, c_rm = st.columns([5, 1])
+            c_addr.write(addr)
+            if c_rm.button("Remove", key=f"rm_{supplier}_{addr}"):
+                st.session_state["email_open"] = supplier
+                update_supplier_emails({**emails, supplier: [e for e in saved if e != addr]})
+                st.rerun()
+
+        adding_key = f"adding_{supplier}"
+        if not st.session_state.get(adding_key):
+            if st.button("Add", key=f"add_{supplier}"):
+                st.session_state["email_open"] = supplier
+                st.session_state[adding_key] = True
+                st.rerun()
+        else:
+            with st.form(f"form_{supplier}", clear_on_submit=True, border=False):
+                new_addr = st.text_input("Email ID", placeholder="name@company.com")
+                c_save, c_cancel = st.columns(2)
+                save = c_save.form_submit_button("Save", type="primary")
+                cancel = c_cancel.form_submit_button("Cancel")
+            if cancel:
+                st.session_state[adding_key] = False
+                st.rerun()
+            if save:
+                new_addr = new_addr.strip()
+                if not L.is_valid_email(new_addr):
+                    st.error("Enter a valid email ID, e.g. name@company.com.")
+                elif new_addr.lower() in (e.lower() for e in saved):
+                    st.warning(f"{new_addr} is already saved for {supplier}.")
+                else:
+                    update_supplier_emails({**emails, supplier: saved + [new_addr]})
+                    st.session_state[adding_key] = False
+                    st.rerun()

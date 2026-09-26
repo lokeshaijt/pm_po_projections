@@ -27,7 +27,6 @@
 
 ## Files
 - `app.py` — Streamlit UI only.
-- `storage.py` — permanent settings store (GitHub branch, or local file).
 - `ui.py` — branding/CSS helpers (header, section headings, summary cards);
   `.streamlit/config.toml` holds the JAY black & gold theme, `assets/` the logo.
 - `logic.py` — all parsing/business logic, no Streamlit dependency
@@ -36,20 +35,15 @@
 - `.streamlit/secrets.toml.example` — copy to `.streamlit/secrets.toml`
   (local) or paste into the app's Secrets box (Streamlit Community Cloud).
 
-## Supplier email IDs and Cc (permanent storage)
-- **Supplier email IDs** section: **Add** → type the ID → **Save**, and
-  **Remove** next to each saved ID. Several IDs per supplier; emails go to all.
-- **Cc** (in the Email suppliers section): same Add/Save/Remove; saved Cc IDs
-  are copied on every email, including Send to all.
-
-Both are stored by `storage.py`. With a `[github]` table in secrets (see
-`.streamlit/secrets.toml.example`) they are saved as `settings.json` on the
-repo's **app-data** branch, so they survive restarts and redeploys, and
-saving doesn't trigger a redeploy (only pushes to `main` do). The token
-needs "Contents: Read and write" on this repo only. Without it the app
-falls back to a local `settings.json` and shows a warning that the IDs are
-not permanent. On first run the list is seeded from the optional
-`[supplier_emails]` secrets table and `cc` in `[smtp]`.
+## Supplier email IDs
+The **Supplier email IDs** section at the bottom of the app lists every
+supplier: **Add** → type the ID → **Save**, and **Remove** next to each saved
+ID. A supplier can have several IDs; emails go to all of them. IDs are stored
+in `supplier_emails.json` next to `app.py` (git-ignored). On first run the
+file is seeded from the optional `[supplier_emails]` table in secrets.
+**On Streamlit Community Cloud that file is reset whenever the app restarts
+or redeploys** (every push), so keep the `[supplier_emails]` secrets table up
+to date as the durable copy.
 
 ## Business rules encoded in `logic.py`
 - **MOQ tiers** (`TIERS`): CFC/TRAY [250,500,1000,3000,5000,10000],
