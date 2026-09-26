@@ -53,8 +53,9 @@ class GitHubStore:
         }
         self._sha = None
 
-    def _url(self, suffix):
-        return f"{API}/repos/{self.repo}/{suffix}"
+    def _url(self, suffix=""):
+        # No trailing slash: GitHub answers 404 for ".../repos/owner/repo/".
+        return f"{API}/repos/{self.repo}" + (f"/{suffix}" if suffix else "")
 
     def _get_file(self):
         r = requests.get(self._url(f"contents/{self.path}"), headers=self.headers,
@@ -71,7 +72,7 @@ class GitHubStore:
             return
         if r.status_code != 404:
             r.raise_for_status()
-        repo = requests.get(self._url(""), headers=self.headers, timeout=15)
+        repo = requests.get(self._url(), headers=self.headers, timeout=15)
         repo.raise_for_status()
         default = repo.json()["default_branch"]
         base = requests.get(self._url(f"git/ref/heads/{default}"), headers=self.headers, timeout=15)
