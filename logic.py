@@ -702,7 +702,7 @@ def match_roster_supplier(name):
 
 
 PO_EMAIL_INTRO = "Please find the below list of pending purchase orders as on today ({date})."
-PO_DEADLINE_LINE = "Ensure all pending deliveries should be delivered on or before Wednesday ({date})."
+PO_DEADLINE_LINE = "Ensure all delayed deliveries should be delivered on or before Wednesday ({date})."
 EMAIL_SIGN_OFF = ["Thank you.", "MJIL - Packing Materials"]
 
 
@@ -760,7 +760,7 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
     if supplier_po_df is not None and not supplier_po_df.empty:
         parts += [f"<p>{html.escape(_po_intro(as_of))}</p>",
                   "<p><b>Pending deliveries</b></p>",
-                  f"<p>{html.escape(_deadline_line(as_of))}</p>",
+                  f'<p style="color:#FF0000;">{html.escape(_deadline_line(as_of))}</p>',
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
