@@ -702,6 +702,7 @@ def match_roster_supplier(name):
 
 
 PO_EMAIL_INTRO = "Please find the below list of pending purchase orders as on today ({date})."
+PO_DEADLINE_LINE = "Ensure all pending deliveries should be delivered on or before Wednesday ({date})."
 EMAIL_SIGN_OFF = ["Thank you.", "MJIL - Packing Materials"]
 
 
@@ -739,6 +740,13 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     return "".join(out)
 
 
+def _deadline_line(as_of) -> str:
+    """The first Wednesday on or after the as-of date."""
+    d = pd.Timestamp(as_of or date.today())
+    wed = d + pd.Timedelta(days=(2 - d.weekday()) % 7)
+    return PO_DEADLINE_LINE.format(date=wed.strftime("%d/%m/%Y"))
+
+
 def _po_intro(as_of) -> str:
     return PO_EMAIL_INTRO.format(date=pd.Timestamp(as_of or date.today()).strftime("%d/%m/%Y"))
 
@@ -752,6 +760,7 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
     if supplier_po_df is not None and not supplier_po_df.empty:
         parts += [f"<p>{html.escape(_po_intro(as_of))}</p>",
                   "<p><b>Pending deliveries</b></p>",
+                  f"<p>{html.escape(_deadline_line(as_of))}</p>",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
@@ -767,7 +776,7 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
     """Plain-text fallback of the HTML email, for clients that don't render HTML."""
     lines = [f"Hello {supplier_name},", ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        lines += [_po_intro(as_of), "", "Pending deliveries"]
+        lines += [_po_intro(as_of), "", "Pending deliveries", _deadline_line(as_of)]
         for _, row in supplier_po_df.iterrows():
             days = row["No. of days to arrive"]
             lines.append(
