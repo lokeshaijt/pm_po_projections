@@ -487,7 +487,8 @@ def generate_report_workbook(po_issued: pd.DataFrame, category_df: pd.DataFrame,
     for cidx in range(1, len(headers1) + 1):
         style_header_cell(ws1.cell(row=1, column=cidx))
 
-    for i, row in po_issued.iterrows():
+    # Most overdue first, same order as the supplier emails.
+    for i, row in _by_days_to_arrive(po_issued).reset_index(drop=True).iterrows():
         r = i + 2
         ws1.cell(row=r, column=1, value=row["Customer Name"])
         style_data_cell(ws1.cell(row=r, column=1))
