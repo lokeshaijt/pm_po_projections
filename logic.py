@@ -714,6 +714,12 @@ def _fmt_qty(v) -> str:
     return f"{float(v):,.0f}" if pd.notna(v) else ""
 
 
+def _by_days_to_arrive(po_rows: pd.DataFrame) -> pd.DataFrame:
+    """Most overdue first: ascending No. of days to arrive, then delivery date, PO number."""
+    return po_rows.sort_values(["No. of days to arrive", "Delivery Date", "Document No"],
+                               kind="stable", na_position="last")
+
+
 def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     """Supplier's pending POs as a bordered table; negative "No. of days to
     arrive" in bold red on a red fill, matching the PO Issued sheet."""
@@ -723,7 +729,7 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     out = ['<table style="border-collapse:collapse;">', "<tr>"]
     out += [f'<th style="{cell}text-align:left;font-weight:normal;">{h}</th>' for h in head]
     out.append("</tr>")
-    for _, row in po_rows.iterrows():
+    for _, row in _by_days_to_arrive(po_rows).iterrows():
         days = row["No. of days to arrive"]
         late = pd.notna(days) and days < 0
         days_style = "color:#FF0000;font-weight:bold;background:#FCE5E5;" if late else ""
@@ -777,7 +783,7 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
     lines = [f"Hello {supplier_name},", ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
         lines += [_po_intro(as_of), "", "Pending deliveries", _deadline_line(as_of)]
-        for _, row in supplier_po_df.iterrows():
+        for _, row in _by_days_to_arrive(supplier_po_df).iterrows():
             days = row["No. of days to arrive"]
             lines.append(
                 f"- PO {row['Document No']} ({_fmt_date(row['Order Date'])}): {row['Item Description']} | "
