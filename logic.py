@@ -777,8 +777,8 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
     ]
     if supplier_po_df is not None and not supplier_po_df.empty:
         parts += [f"<p>{html.escape(_po_intro(as_of))}</p>",
-                  "<p><b>Pending deliveries</b></p>",
                   f'<p style="color:#FF0000;">{html.escape(_deadline_line(as_of))}</p>',
+                  "<p><b>Pending deliveries</b></p>",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
         intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
@@ -794,7 +794,7 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
     """Plain-text fallback of the HTML email, for clients that don't render HTML."""
     lines = [f"Hello {supplier_name},", ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        lines += [_po_intro(as_of), "", "Pending deliveries", _deadline_line(as_of)]
+        lines += [_po_intro(as_of), "", _deadline_line(as_of), "", "Pending deliveries"]
         for _, row in _by_days_to_arrive(supplier_po_df).iterrows():
             days = row["No. of days to arrive"]
             lines.append(
