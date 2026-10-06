@@ -254,35 +254,42 @@ def parse_pending_po(file) -> pd.DataFrame:
     if target_ws is None:
         raise ValueError("Could not find an 'Outstanding Quantity' column in the Pending PO file.")
 
-    c_doc = col(col_map, "Document No")
-    c_odate = col(col_map, "Order Date")
-    c_cust = col(col_map, "Customer Name")
-    c_item = col(col_map, "Item No")
-    c_desc = col(col_map, "Item Description")
-    c_deliv = col(col_map, "Delivery Date")
-    c_qty = col(col_map, "Quantity")
-    c_outstanding = col(col_map, "Outstanding Quantity")
+    def first_col(*names):
+        return next((c for c in (col(col_map, n) for n in names) if c), None)
+
+    cols = {
+        "Document No": first_col("Document No", "Document No.", "PO No", "PO No.", "PO Number", "Order No", "Order No."),
+        "Order Date": first_col("Order Date", "Document Date", "PO Date"),
+        "Customer Name": first_col("Customer Name", "Vendor Name", "Supplier Name", "Buy-from Vendor Name"),
+        "Item No": first_col("Item No", "Item No."),
+        "Item Description": first_col("Item Description", "Description"),
+        "Delivery Date": first_col("Delivery Date", "Planned Delivery Date", "Expected Receipt Date"),
+        "Quantity": first_col("Quantity"),
+        "Outstanding Quantity": first_col("Outstanding Quantity"),
+    }
+    required = ["Item No", "Customer Name", "Delivery Date"]
+    missing_required = [k for k in required if not cols[k]]
+    if missing_required:
+        raise ValueError("The Pending PO file has no " + ", ".join(f"'{k}'" for k in missing_required)
+                         + " column. Columns found: " + ", ".join(str(k) for k in col_map))
 
     rows = []
     for r in range(header_row + 1, target_ws.max_row + 1):
-        item_no = target_ws.cell(row=r, column=c_item).value if c_item else None
+        item_no = target_ws.cell(row=r, column=cols["Item No"]).value
         if not item_no:
             continue
-        rows.append(
-            {
-                "Document No": target_ws.cell(row=r, column=c_doc).value,
-                "Order Date": target_ws.cell(row=r, column=c_odate).value,
-                "Customer Name": target_ws.cell(row=r, column=c_cust).value,
-                "Item No": str(item_no).strip(),
-                "Item Description": target_ws.cell(row=r, column=c_desc).value,
-                "Delivery Date": target_ws.cell(row=r, column=c_deliv).value,
-                "Quantity": target_ws.cell(row=r, column=c_qty).value,
-                "Outstanding Quantity": target_ws.cell(row=r, column=c_outstanding).value,
-            }
-        )
-    df = pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+        row = {k: (target_ws.cell(row=r, column=c).value if c else None) for k, c in cols.items()}
+        row["Item No"] = str(item_no).strip()
+        rows.append(row)
+    df = pd.DataFrame(rows, columns=list(cols))
+    # Exact-duplicate export rows are only safe to drop when the PO number is
+    # there; without it, two real PO lines can look identical.
+    if cols["Document No"]:
+        df = df.drop_duplicates()
+    df = df.reset_index(drop=True)
     df["Order Date"] = pd.to_datetime(df["Order Date"], dayfirst=True, errors="coerce")
     df["Delivery Date"] = pd.to_datetime(df["Delivery Date"], dayfirst=True, errors="coerce")
+    df.attrs["missing_columns"] = [k for k, c in cols.items() if not c]
     return df
 
 
@@ -725,8 +732,10 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     """Supplier's pending POs as a bordered table; negative "No. of days to
     arrive" in bold red on a red fill, matching the PO Issued sheet."""
     cell = "border:1px solid #000;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:14px;"
-    head = ["PO number", "PO date", "Item Description", "PO Qty", "Outstanding Qty",
-            "Delivery date", "No. of days to arrive"]
+    # Some exports carry no PO number column: leave that column out then.
+    show_po = po_rows["Document No"].notna().any()
+    head = (["PO number"] if show_po else []) + ["PO date", "Item Description", "PO Qty", "Outstanding Qty",
+                                                 "Delivery date", "No. of days to arrive"]
     out = ['<table style="border-collapse:collapse;">', "<tr>"]
     out += [f'<th style="{cell}text-align:left;font-weight:normal;">{h}</th>' for h in head]
     out.append("</tr>")
@@ -735,7 +744,9 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
         late = pd.notna(days) and days < 0
         days_style = "color:#FF0000;font-weight:bold;background:#FCE5E5;" if late else ""
         out.append("<tr>")
-        out.append(f'<td style="{cell}">{html.escape(str(row["Document No"] or ""))}</td>')
+        if show_po:
+            po_no = row["Document No"]
+            out.append(f'<td style="{cell}">{html.escape(str(po_no) if pd.notna(po_no) else "")}</td>')
         out.append(f'<td style="{cell}text-align:center;">{_fmt_date(row["Order Date"])}</td>')
         out.append(f'<td style="{cell}">{html.escape(str(row["Item Description"] or ""))}</td>')
         out.append(f'<td style="{cell}text-align:right;">{_fmt_qty(row["Quantity"])}</td>')
@@ -787,7 +798,8 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
         for _, row in _by_days_to_arrive(supplier_po_df).iterrows():
             days = row["No. of days to arrive"]
             lines.append(
-                f"- PO {row['Document No']} ({_fmt_date(row['Order Date'])}): {row['Item Description']} | "
+                (f"- PO {row['Document No']} " if pd.notna(row["Document No"]) else "- ")
+                + f"({_fmt_date(row['Order Date'])}): {row['Item Description']} | "
                 f"PO Qty {_fmt_qty(row['Quantity'])} | Outstanding {_fmt_qty(row['Outstanding Quantity'])} | "
                 f"Delivery {_fmt_date(row['Delivery Date'])} | Days to arrive {'' if pd.isna(days) else int(days)}"
             )

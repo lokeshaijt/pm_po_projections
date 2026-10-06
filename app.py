@@ -107,7 +107,15 @@ if generate:
         st.error("Please upload the Pending PO, PM Requirement, and Item Category Master files.")
     else:
         with st.spinner("Processing..."):
-            po_df = L.parse_pending_po(po_file)
+            try:
+                po_df = L.parse_pending_po(po_file)
+            except ValueError as e:
+                st.error(str(e))
+                st.stop()
+            if po_df.attrs.get("missing_columns"):
+                st.session_state["po_missing_cols"] = po_df.attrs["missing_columns"]
+            else:
+                st.session_state.pop("po_missing_cols", None)
             req_data = L.parse_requirement_workbook(req_file)
             name_to_cat, name_to_type = L.load_category_master(master_file)
             item_to_cat, item_to_type = L.build_item_category_map(req_data, name_to_cat, name_to_type)
@@ -139,6 +147,12 @@ if "category_df" in st.session_state:
     category_df = st.session_state["category_df"]
     projection_weeks = st.session_state["projection_weeks"]
     po_issued = st.session_state["po_issued"]
+
+    if st.session_state.get("po_missing_cols"):
+        st.warning(
+            "The Pending PO file has no " + ", ".join(st.session_state["po_missing_cols"])
+            + " column, so PO numbers won't appear in the report or emails."
+        )
 
     unmatched_df = st.session_state.get("unmatched_df")
     if unmatched_df is not None and not unmatched_df.empty:
