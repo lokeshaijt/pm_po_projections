@@ -710,7 +710,7 @@ def match_roster_supplier(name):
 
 
 PO_EMAIL_INTRO = "Please find the below list of pending purchase orders as on today ({date})."
-PO_DEADLINE_LINE = "Ensure all delayed deliveries should be delivered on or before Wednesday ({date})."
+PO_DEADLINE_LINE = "Ensure all delayed deliveries are delivered on or before Wednesday ({date})."
 EMAIL_SIGN_OFF = ["Thank you.", "MJIL - Packing Materials"]
 
 
