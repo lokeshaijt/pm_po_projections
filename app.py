@@ -91,7 +91,7 @@ ui.hero(
 
 with st.sidebar:
     st.logo(str(ui.LOGO_PATH), size="large")
-    ui.sidebar_title("① Upload files")
+    ui.sidebar_title("Upload files")
     po_file = st.file_uploader("Pending PO file (.xlsx)", type="xlsx", key="po_file")
     req_file = st.file_uploader("PM Requirement file (.xlsx)", type="xlsx", key="req_file")
     master_file = st.file_uploader(
@@ -322,7 +322,7 @@ else:
     st.info("Upload the three files in the sidebar and click **Generate report** to get started.")
     ui.getting_started()
 
-ui.section("@", "Supplier email IDs", "Emails go to every ID saved for the supplier.")
+ui.section("—", "Supplier email IDs", "Emails go to every ID saved for the supplier.")
 emails = get_supplier_emails()
 for supplier in L.all_suppliers():
     saved = emails.get(supplier, [])
