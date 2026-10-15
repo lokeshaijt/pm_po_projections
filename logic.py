@@ -710,8 +710,55 @@ def match_roster_supplier(name):
 
 
 PO_EMAIL_INTRO = "Please find the below list of pending purchase orders as on today ({date})."
-PO_DEADLINE_LINE = "Ensure all delayed deliveries are delivered on or before Wednesday ({date})."
+PO_DEADLINE_LINE = "Ensure all delayed deliveries are delivered on or before Wednesday ({wednesday})."
 EMAIL_SIGN_OFF = ["Thank you.", "MJIL - Packing Materials"]
+
+# Every editable piece of the supplier email. Placeholders: {supplier},
+# {date} (the as-of date) and {wednesday} (first Wednesday on/after it).
+# The PO and projection tables are always generated from the data.
+EMAIL_TEXT_DEFAULTS = {
+    "subject": "Pending delivery & Item Category-wise Projection — {supplier}",
+    "greeting": "Hello {supplier},",
+    "po_intro": PO_EMAIL_INTRO,
+    "deadline": PO_DEADLINE_LINE,
+    "po_heading": "Pending deliveries",
+    "proj_heading": "Projections",
+    "proj_intro": EMAIL_TEMPLATE_INTRO.partition("\n\n")[0],
+    "note": EMAIL_TEMPLATE_INTRO.partition("\n\n")[2],
+    "sign_off": "\n".join(EMAIL_SIGN_OFF),
+}
+
+
+class _KeepUnknown(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
+def _wednesday(as_of):
+    d = pd.Timestamp(as_of or date.today())
+    return d + pd.Timedelta(days=(2 - d.weekday()) % 7)
+
+
+def email_texts(supplier_name: str, as_of=None, texts: dict = None) -> dict:
+    """The email's text pieces with placeholders filled in. `texts` overrides
+    EMAIL_TEXT_DEFAULTS; a piece with a stray brace is left as typed."""
+    vals = _KeepUnknown(
+        supplier=supplier_name,
+        date=pd.Timestamp(as_of or date.today()).strftime("%d/%m/%Y"),
+        wednesday=_wednesday(as_of).strftime("%d/%m/%Y"),
+    )
+    out = {}
+    for key, default in EMAIL_TEXT_DEFAULTS.items():
+        t = (texts or {}).get(key, default)
+        try:
+            out[key] = t.format_map(vals)
+        except (ValueError, IndexError, AttributeError, KeyError):
+            out[key] = t
+    return out
+
+
+def _html_lines(text: str) -> str:
+    return "<br>".join(html.escape(l) for l in text.split("\n"))
 
 
 def _fmt_date(v) -> str:
@@ -758,43 +805,33 @@ def build_po_issued_html(po_rows: pd.DataFrame) -> str:
     return "".join(out)
 
 
-def _deadline_line(as_of) -> str:
-    """The first Wednesday on or after the as-of date."""
-    d = pd.Timestamp(as_of or date.today())
-    wed = d + pd.Timedelta(days=(2 - d.weekday()) % 7)
-    return PO_DEADLINE_LINE.format(date=wed.strftime("%d/%m/%Y"))
-
-
-def _po_intro(as_of) -> str:
-    return PO_EMAIL_INTRO.format(date=pd.Timestamp(as_of or date.today()).strftime("%d/%m/%Y"))
-
-
 def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
-                              supplier_po_df: pd.DataFrame = None, as_of=None) -> str:
+                              supplier_po_df: pd.DataFrame = None, as_of=None, texts: dict = None) -> str:
+    t = email_texts(supplier_name, as_of, texts)
     parts = [
         '<div style="font-family:Calibri,Arial,sans-serif;font-size:14px;">',
-        f"<p>Hello {html.escape(supplier_name)},</p>",
+        f"<p>{_html_lines(t['greeting'])}</p>",
     ]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        parts += [f"<p>{html.escape(_po_intro(as_of))}</p>",
-                  f'<p style="color:#FF0000;">{html.escape(_deadline_line(as_of))}</p>',
-                  "<p><b>Pending deliveries</b></p>",
+        parts += [f"<p>{_html_lines(t['po_intro'])}</p>",
+                  f'<p style="color:#FF0000;">{_html_lines(t["deadline"])}</p>' if t["deadline"].strip() else "",
+                  f"<p><b>{_html_lines(t['po_heading'])}</b></p>" if t["po_heading"].strip() else "",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
-        intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
-        parts += [f"<p><b>Projections</b><br>{html.escape(intro)}</p>",
+        parts += [f"<p><b>{_html_lines(t['proj_heading'])}</b><br>{_html_lines(t['proj_intro'])}</p>",
                   build_allocation_html(supplier_alloc_df, projection_weeks),
-                  f'<p style="color:#FF0000;font-weight:bold;">{html.escape(note)}</p>']
-    parts.append("<p>" + "<br>".join(html.escape(l) for l in EMAIL_SIGN_OFF) + "</p></div>")
+                  f'<p style="color:#FF0000;font-weight:bold;">{_html_lines(t["note"])}</p>' if t["note"].strip() else ""]
+    parts.append(f"<p>{_html_lines(t['sign_off'])}</p></div>")
     return "".join(parts)
 
 
 def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.DataFrame, projection_weeks,
-                                   supplier_po_df: pd.DataFrame = None, as_of=None) -> str:
+                                   supplier_po_df: pd.DataFrame = None, as_of=None, texts: dict = None) -> str:
     """Plain-text fallback of the HTML email, for clients that don't render HTML."""
-    lines = [f"Hello {supplier_name},", ""]
+    t = email_texts(supplier_name, as_of, texts)
+    lines = [t["greeting"], ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        lines += [_po_intro(as_of), "", _deadline_line(as_of), "", "Pending deliveries"]
+        lines += [t["po_intro"], ""] + ([t["deadline"], ""] if t["deadline"].strip() else []) + [t["po_heading"]]
         for _, row in _by_days_to_arrive(supplier_po_df).iterrows():
             days = row["No. of days to arrive"]
             lines.append(
@@ -805,16 +842,15 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
             )
         lines.append("")
     if not supplier_alloc_df.empty:
-        intro, _, note = EMAIL_TEMPLATE_INTRO.partition("\n\n")
-        lines += ["Projections", intro, ""]
+        lines += [t["proj_heading"], t["proj_intro"], ""]
         for _, row in supplier_alloc_df.iterrows():
             lines.append(f"- {row['Item Category']} ({row['Item Type']})")
             for w in projection_weeks:
                 v = row[f"Wk #{w}"]
                 if v:
                     lines.append(f"    {week_label(w)}: {v:.0f}")
-        lines += ["", note, ""]
-    lines += EMAIL_SIGN_OFF
+        lines += ["", t["note"], ""]
+    lines += t["sign_off"].split("\n")
     return "\n".join(lines)
 
 

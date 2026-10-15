@@ -261,12 +261,35 @@ if "category_df" in st.session_state:
     if not mail_suppliers:
         st.info("No supplier has an assigned projection or a pending PO yet.")
     else:
+        # Editable wording, shared by every supplier's email this session.
+        text_fields = [
+            ("subject", "Subject", "input"),
+            ("greeting", "Greeting", "input"),
+            ("po_intro", "Pending POs intro", "area"),
+            ("deadline", "Deadline line (red)", "area"),
+            ("po_heading", "Pending deliveries heading", "input"),
+            ("proj_heading", "Projections heading", "input"),
+            ("proj_intro", "Projections intro", "area"),
+            ("note", "Note (bold red)", "area"),
+            ("sign_off", "Sign-off", "area"),
+        ]
+        for key, _, _ in text_fields:
+            st.session_state.setdefault(f"email_txt_{key}", L.EMAIL_TEXT_DEFAULTS[key])
+
+        def reset_email_text():
+            for key, _, _ in text_fields:
+                st.session_state[f"email_txt_{key}"] = L.EMAIL_TEXT_DEFAULTS[key]
+
+        def email_texts_now():
+            return {key: st.session_state[f"email_txt_{key}"] for key, _, _ in text_fields}
+
         def email_parts(supplier):
             s_df = alloc_df[alloc_df["Supplier"] == supplier]
             po_df = po_mail[po_mail["Roster Supplier"] == supplier]
+            as_of, texts = st.session_state.get("as_of"), email_texts_now()
             return (
-                L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df, st.session_state.get("as_of")),
-                L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df, st.session_state.get("as_of")),
+                L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df, as_of, texts),
+                L.build_supplier_email_html(supplier, s_df, projection_weeks, po_df, as_of, texts),
             )
 
         def send_to(supplier, cc_emails):
@@ -276,7 +299,7 @@ if "category_df" in st.session_state:
                 raise ValueError("no email ID saved — add one under Supplier email IDs")
             send_email(
                 to_emails,
-                f"Pending delivery & Item Category-wise Projection — {supplier}",
+                L.email_texts(supplier, st.session_state.get("as_of"), email_texts_now())["subject"],
                 text_body,
                 html_body,
                 cc_emails,
@@ -297,7 +320,24 @@ if "category_df" in st.session_state:
             "To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —")
             + (f"  ·  Cc: {', '.join(cc_list)}" if cc_list and not bad_cc else "")
         )
+        edited = email_texts_now() != {k: L.EMAIL_TEXT_DEFAULTS[k] for k, _, _ in text_fields}
+        with st.expander("Edit email text", expanded=False):
+            if edited:
+                st.markdown("**Edited** — the preview and every email use your text.")
+            st.caption(
+                "Changes apply to every supplier's email, including Send to all, until the page is reloaded. "
+                "Use {supplier}, {date} (as-of date) and {wednesday} to fill those in automatically. "
+                "The pending PO and projection tables always come from the data. "
+                "Leave the deadline line, Pending deliveries heading or note empty to drop it."
+            )
+            for key, label, kind in text_fields:
+                if kind == "input":
+                    st.text_input(label, key=f"email_txt_{key}")
+                else:
+                    st.text_area(label, key=f"email_txt_{key}", height=68 if key != "sign_off" else 80)
+            st.button("Reset to default text", on_click=reset_email_text)
         st.write("**Email preview**")
+        st.caption("Subject: " + L.email_texts(email_supplier, st.session_state.get("as_of"), email_texts_now())["subject"])
         with st.container(border=True):
             st.markdown(email_parts(email_supplier)[1], unsafe_allow_html=True)
 
