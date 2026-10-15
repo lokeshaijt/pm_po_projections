@@ -283,9 +283,17 @@ if "category_df" in st.session_state:
         def email_texts_now():
             return {key: st.session_state[f"email_txt_{key}"] for key, _, _ in text_fields}
 
+        # Pending PO rows left out of the emails, by row index; reset per report.
+        excl_key = f"po_excluded_{st.session_state.get('report_id', 0)}"
+        excluded = st.session_state.setdefault(excl_key, set())
+
+        def supplier_pos(supplier, include_excluded=False):
+            rows = po_mail[po_mail["Roster Supplier"] == supplier]
+            return rows if include_excluded else rows[~rows.index.isin(excluded)]
+
         def email_parts(supplier):
             s_df = alloc_df[alloc_df["Supplier"] == supplier]
-            po_df = po_mail[po_mail["Roster Supplier"] == supplier]
+            po_df = supplier_pos(supplier)
             as_of, texts = st.session_state.get("as_of"), email_texts_now()
             return (
                 L.build_supplier_allocation_text(supplier, s_df, projection_weeks, po_df, as_of, texts),
@@ -320,6 +328,45 @@ if "category_df" in st.session_state:
             "To: " + (", ".join(recipients) if recipients else "— no email ID saved for this supplier —")
             + (f"  ·  Cc: {', '.join(cc_list)}" if cc_list and not bad_cc else "")
         )
+        all_rows = L.sort_by_days_to_arrive(supplier_pos(email_supplier, include_excluded=True))
+        if not all_rows.empty:
+            with st.expander("Edit pending PO rows", expanded=False):
+                st.caption(
+                    "Untick a row to leave it out of this supplier's email (Send to all respects it too). "
+                    "Untick every row to drop the Pending deliveries section. The Excel report is not affected."
+                )
+                editor = pd.DataFrame({
+                    "Include": [i not in excluded for i in all_rows.index],
+                    "PO number": all_rows["Document No"].fillna("").astype(str).values,
+                    "Item Description": all_rows["Item Description"].fillna("").astype(str).values,
+                    "Outstanding Qty": all_rows["Outstanding Quantity"].values,
+                    "Delivery date": all_rows["Delivery Date"].dt.strftime("%d/%m/%Y").fillna("").values,
+                    "Days to arrive": all_rows["No. of days to arrive"].values,
+                }, index=all_rows.index)
+                if not all_rows["Document No"].notna().any():
+                    editor = editor.drop(columns="PO number")
+                result = st.data_editor(
+                    editor,
+                    key=f"po_rows_{excl_key}_{email_supplier}_{st.session_state.get('po_rows_ver', 0)}",
+                    hide_index=True,
+                    use_container_width=True,
+                    num_rows="fixed",
+                    disabled=[c for c in editor.columns if c != "Include"],
+                    column_config={
+                        "Include": st.column_config.CheckboxColumn("Include", width="small"),
+                        "Outstanding Qty": st.column_config.NumberColumn(format="%d"),
+                    },
+                )
+                for i, keep in result["Include"].items():
+                    (excluded.discard if keep else excluded.add)(i)
+                kept = int(result["Include"].sum())
+                c1, c2 = st.columns([3, 1])
+                c1.caption(f"{kept} of {len(result)} rows included.")
+                if kept < len(result) and c2.button("Include all rows", key=f"po_all_{email_supplier}"):
+                    excluded.difference_update(all_rows.index)
+                    st.session_state["po_rows_ver"] = st.session_state.get("po_rows_ver", 0) + 1
+                    st.rerun()
+
         edited = email_texts_now() != {k: L.EMAIL_TEXT_DEFAULTS[k] for k, _, _ in text_fields}
         with st.expander("Edit email text", expanded=False):
             if edited:

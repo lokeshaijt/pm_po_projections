@@ -769,6 +769,11 @@ def _fmt_qty(v) -> str:
     return f"{float(v):,.0f}" if pd.notna(v) else ""
 
 
+def sort_by_days_to_arrive(po_rows: pd.DataFrame) -> pd.DataFrame:
+    """Most overdue first: ascending No. of days to arrive, then delivery date, PO number."""
+    return _by_days_to_arrive(po_rows)
+
+
 def _by_days_to_arrive(po_rows: pd.DataFrame) -> pd.DataFrame:
     """Most overdue first: ascending No. of days to arrive, then delivery date, PO number."""
     return po_rows.sort_values(["No. of days to arrive", "Delivery Date", "Document No"],
