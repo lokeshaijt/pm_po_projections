@@ -757,6 +757,13 @@ def email_texts(supplier_name: str, as_of=None, texts: dict = None) -> dict:
     return out
 
 
+def _show_deadline(t: dict, po_rows: pd.DataFrame) -> bool:
+    """The red delayed-deliveries line only goes to suppliers with an overdue
+    PO in their table (negative No. of days to arrive)."""
+    overdue = pd.to_numeric(po_rows["No. of days to arrive"], errors="coerce") < 0
+    return bool(t["deadline"].strip()) and bool(overdue.any())
+
+
 def _html_lines(text: str) -> str:
     return "<br>".join(html.escape(l) for l in text.split("\n"))
 
@@ -819,7 +826,7 @@ def build_supplier_email_html(supplier_name: str, supplier_alloc_df: pd.DataFram
     ]
     if supplier_po_df is not None and not supplier_po_df.empty:
         parts += [f"<p>{_html_lines(t['po_intro'])}</p>",
-                  f'<p style="color:#FF0000;">{_html_lines(t["deadline"])}</p>' if t["deadline"].strip() else "",
+                  f'<p style="color:#FF0000;">{_html_lines(t["deadline"])}</p>' if _show_deadline(t, supplier_po_df) else "",
                   f"<p><b>{_html_lines(t['po_heading'])}</b></p>" if t["po_heading"].strip() else "",
                   build_po_issued_html(supplier_po_df)]
     if not supplier_alloc_df.empty:
@@ -836,7 +843,7 @@ def build_supplier_allocation_text(supplier_name: str, supplier_alloc_df: pd.Dat
     t = email_texts(supplier_name, as_of, texts)
     lines = [t["greeting"], ""]
     if supplier_po_df is not None and not supplier_po_df.empty:
-        lines += [t["po_intro"], ""] + ([t["deadline"], ""] if t["deadline"].strip() else []) + [t["po_heading"]]
+        lines += [t["po_intro"], ""] + ([t["deadline"], ""] if _show_deadline(t, supplier_po_df) else []) + [t["po_heading"]]
         for _, row in _by_days_to_arrive(supplier_po_df).iterrows():
             days = row["No. of days to arrive"]
             lines.append(
